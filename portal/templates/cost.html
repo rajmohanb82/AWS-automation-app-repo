@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Cost · {{ org_name }}{% endblock %}
+{% block page %}cost{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Cost</h1>
+    <p class="lede">Load recommendations from Cost Optimization Hub first. That figure includes the account's discounts. Inventory estimates are published on-demand prices and stay labeled as estimates.</p>
+  </div>
+  <div class="actions">
+    <button type="button" id="native-btn">Load AWS recommendations</button>
+    <button type="button" class="secondary" id="inventory-btn">Run inventory estimate</button>
+    <button type="button" class="secondary" id="pdf-btn">Download PDF</button>
+  </div>
+</header>
+<div id="work-status" class="note" hidden></div>
+<div id="cost-kpis" class="kpis" hidden></div>
+<div class="card table-card">
+  <div id="work-results"><p class="empty">Choose an account and region, then load recommendations.</p></div>
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Set up {{ org_name }}{% endblock %}
+{% block page %}{% if step == 3 %}settings{% else %}setup{% endif %}{% endblock %}
+{% block content %}
+<section class="card wizard">
+  <ol class="steps">
+    {% for label in ["Organization", "Administrator", "AWS connection", "First scope"] %}
+    <li {% if loop.index == step %}aria-current="step"{% endif %}>{{ label }}</li>
+    {% endfor %}
+  </ol>
+
+  {% if step == 1 %}
+  <h1>How will this console be used?</h1>
+  <p class="lede">This choice sets the navigation. The same scans run either way, and an administrator can change it later in Settings.</p>
+  <form class="stack" method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Organization name
+      <input name="org_name" required maxlength="80" value="{{ wizard.org_name or '' }}" placeholder="Northwind Cloud">
+    </label>
+    <fieldset>
+      <legend>Operating model</legend>
+      <label class="choice"><input type="radio" name="mode" value="msp" {% if wizard.mode != 'product' %}checked{% endif %}> MSP. Customers, then AWS accounts.</label>
+      <label class="choice"><input type="radio" name="mode" value="product" {% if wizard.mode == 'product' %}checked{% endif %}> Product company. Products, environments, then accounts.</label>
+    </fieldset>
+    <fieldset id="cardinality">
+      <legend>Products</legend>
+      <label class="choice"><input type="radio" name="cardinality" value="single" checked> One product with several environments</label>
+      <label class="choice"><input type="radio" name="cardinality" value="multiple"> Several products, each with its own environments</label>
+    </fieldset>
+    <button type="submit">Continue</button>
+  </form>
+  {% elif step == 2 %}
+  <h1>Create the administrator</h1>
+  <p class="lede">This person enrolls an authenticator at first sign-in. Add more people later. Identity provider sign-in is configured in Settings after setup.</p>
+  <form class="stack" method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Username <input name="username" required autocomplete="username" value="{{ wizard.username or '' }}"></label>
+    <label>Email <input name="email" type="email" required autocomplete="email" value="{{ wizard.email or '' }}"></label>
+    <label>Password <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+    <button type="submit">Continue</button>
+  </form>
+  {% elif step == 3 %}
+  <h1>Connect AWS</h1>
+  <p class="lede">Scans use a local AWS profile, or an IAM Identity Center permission set. A role name on each account is assumed when the connected identity is not already in that account.</p>
+  {% set form_action = url_for('setup_connection') %}
+  {% set submit_label = 'Continue' %}
+  {% set show_later = true %}
+  {% include "connection_fields.html" %}
+  {% else %}
+  <h1>Add the first {% if wizard.mode == 'msp' %}customer{% else %}environment{% endif %}</h1>
+  <p class="lede">You can leave this blank and add accounts from Scope after sign-in.</p>
+  <form class="stack" method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if wizard.mode == 'msp' %}
+    <label>Customer name <input name="customer_name" placeholder="Contoso"></label>
+    {% else %}
+    <label>Product name <input name="product_name" placeholder="Billing platform"></label>
+    <label>Environment <input name="environment_name" placeholder="production"></label>
+    {% endif %}
+    <label>Account name <input name="account_name" placeholder="Production"></label>
+    <label>AWS account ID <input name="account_id" inputmode="numeric" maxlength="12" placeholder="123456789012"></label>
+    <label>Role to assume <input name="role_name" placeholder="Optional. Example: OrganizationReadOnly"></label>
+    <label>Home region
+      <select name="region">
+        {% for region in regions %}
+        <option value="{{ region.code }}" {% if region.code == 'ap-south-1' %}selected{% endif %}>{{ region.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="actions">
+      <button type="submit">Open the console</button>
+      <button type="submit" class="secondary" name="skip" value="1">Skip for now</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

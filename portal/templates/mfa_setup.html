@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Register authenticator{% endblock %}
+{% block page %}mfa{% endblock %}
+{% block content %}
+<section class="card wizard">
+  <h1>Register your authenticator</h1>
+  <p class="lede">Scan the QR code with Google Authenticator, Microsoft Authenticator, or another authenticator app. If you cannot scan, enter the setup PIN below into the app.</p>
+  <div class="qr">{{ svg|safe }}</div>
+  <p class="setup-pin">Setup PIN <code>{{ pin }}</code></p>
+  <form class="stack" method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">I have added this device</button>
+  </form>
+</section>
+{% endblock %}

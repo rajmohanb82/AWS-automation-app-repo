@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AWS Housekeeping Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- ── HEADER ── -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo-group">
+        <div class="logo-icon">
+          <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M20 4L36 12V28L20 36L4 28V12L20 4Z" stroke="#FF9900" stroke-width="2.5" fill="none"/>
+            <path d="M20 4V36M4 12L36 28M36 12L4 28" stroke="#FF9900" stroke-width="1.2" opacity="0.5"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="logo-title">AWS Housekeeping</h1>
+          <p class="logo-sub">Recommendations Dashboard</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-sso">🔐 EC2 Instance Role</span>
+        <span class="badge badge-local">☁️ Cross-Account</span>
+        <a href="//:5001" class="badge" style="text-decoration: none; background: rgba(255, 153, 0, 0.15); color: #FF9900; border: 1px solid rgba(255, 153, 0, 0.3); cursor: pointer;">💰 Cost Optimizer</a>
+        <a href="//:8181" class="badge" style="text-decoration: none; background: rgba(139, 92, 246, 0.15); color: #8B5CF6; border: 1px solid rgba(139, 92, 246, 0.3); cursor: pointer; margin-left: 8px;">📊 Governance Report</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-layout">
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section">
+        <h2 class="sidebar-title">Authentication</h2>
+        <p class="sidebar-hint">Select a client account to scan via AssumeRole</p>
+
+        <div class="field-group">
+          <label class="field-label" for="regionSelect">AWS Region</label>
+          <div class="select-wrapper">
+            <select id="regionSelect" class="field-select">
+              <option value="">Loading regions…</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="accountSelect">Client Account</label>
+          <div class="select-wrapper">
+            <select id="accountSelect" class="field-select">
+              <option value="">Loading accounts…</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn-primary" id="loginBtn" onclick="startAuth()">
+          <span class="btn-icon">🔗</span> Connect
+        </button>
+
+        <div class="auth-status" id="authStatus" style="display:none"></div>
+      </div>
+
+      <!-- Identity Card (shown after auth) -->
+      <div class="identity-card" id="identityCard" style="display:none">
+        <div class="identity-header">
+          <span class="identity-icon">✅</span>
+          <span class="identity-title">Connected</span>
+        </div>
+        <div class="identity-rows">
+          <div class="identity-row"><span class="ident-key">Account ID</span><span class="ident-val mono" id="idAccountId">—</span></div>
+          <div class="identity-row"><span class="ident-key">Account Name</span><span class="ident-val mono" id="idRole">—</span></div>
+          <div class="identity-row"><span class="ident-key">Region</span><span class="ident-val" id="idRegion">—</span></div>
+        </div>
+        <button class="btn-scan" id="scanBtn" onclick="startScan()">
+          <span class="btn-icon">🔍</span> Scan Account
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── MAIN CONTENT ── -->
+    <main class="main-content">
+      <!-- Welcome state -->
+      <div class="welcome-state" id="welcomeState">
+        <div class="welcome-icon">🛡️</div>
+        <h2 class="welcome-title">AWS Account Housekeeping</h2>
+        <p class="welcome-desc">Select a client account and connect to scan for security issues, cost optimization opportunities, and operational improvements.</p>
+        <div class="welcome-categories">
+          <div class="wcat"><span>⚡</span> EC2 &amp; EBS</div>
+          <div class="wcat"><span>🔐</span> IAM &amp; MFA</div>
+          <div class="wcat"><span>🪣</span> S3 Access</div>
+          <div class="wcat"><span>🛡️</span> Security Groups</div>
+          <div class="wcat"><span>🗄️</span> RDS</div>
+          <div class="wcat"><span>⚖️</span> Load Balancers</div>
+          <div class="wcat"><span>λ</span> Lambda</div>
+          <div class="wcat"><span>📊</span> CloudWatch</div>
+          <div class="wcat"><span>☸️</span> EKS</div>
+          <div class="wcat"><span>🐳</span> ECS</div>
+          <div class="wcat"><span>🌊</span> KDS (Kinesis Streams)</div>
+          <div class="wcat"><span>🔥</span> KFH (Firehose)</div>
+        </div>
+      </div>
+
+      <!-- Scanning spinner -->
+      <div class="scan-state" id="scanState" style="display:none">
+        <div class="scan-spinner"></div>
+        <p class="scan-text" id="scanText">Scanning your AWS account…</p>
+        <div class="scan-progress">
+          <div class="scan-bar" id="scanBar"></div>
+        </div>
+      </div>
+
+      <!-- Results dashboard -->
+      <div class="results-state" id="resultsState" style="display:none">
+        <div class="summary-counters" id="summaryCounters"></div>
+        <div class="filter-bar">
+          <button class="filter-btn active" id="filterAll" onclick="setFilter('ALL')">All</button>
+          <button class="filter-btn high" id="filterHigh" onclick="setFilter('HIGH')">🔴 High</button>
+          <button class="filter-btn medium" id="filterMedium" onclick="setFilter('MEDIUM')">🟡 Medium</button>
+          <button class="filter-btn low" id="filterLow" onclick="setFilter('LOW')">🟢 Low</button>
+        </div>
+        <div id="categoryContainer"></div>
+        <div class="no-issues" id="noIssues" style="display:none">
+          <span class="no-icon">🎉</span>
+          <h3>No Issues Found</h3>
+          <p>Your AWS account looks clean in this region!</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+
+  <!-- ── REMEDIATION MODAL ── -->
+  <div class="rem-modal-overlay" id="remModal" style="display:none" onclick="if(event.target===this)closeRemediationModal()">
+    <div class="rem-modal">
+      <div class="rem-modal-header">
+        <div class="rem-modal-title">
+          <span class="rem-modal-icon">🔧</span>
+          <h2>Remediate Issue</h2>
+        </div>
+        <button class="rem-close-btn" onclick="closeRemediationModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="rem-modal-body">
+        <div class="rem-finding-card">
+          <div class="rem-finding-row">
+            <span class="rem-label">Issue</span>
+            <span class="rem-val" id="remTitle">—</span>
+            <span id="remSeverity" class="sev-badge"></span>
+          </div>
+          <div class="rem-finding-row">
+            <span class="rem-label">Resource</span>
+            <code class="rem-val mono" id="remResource">—</code>
+          </div>
+          <div class="rem-finding-row">
+            <span class="rem-label">Details</span>
+            <span class="rem-val" id="remDetails">—</span>
+          </div>
+          <div class="rem-finding-row">
+            <span class="rem-label">Action</span>
+            <span class="rem-val rem-action-text" id="remAction">—</span>
+          </div>
+        </div>
+        <div id="remConfirmSection">
+          <div class="rem-destruct-warn" id="remDestructWarn" style="display:none">
+            ⚠️ <strong>Destructive Action:</strong> A safety snapshot will be created before any deletion.
+          </div>
+          <label class="rem-confirm-label">
+            <input type="checkbox" id="remConfirmCheck" onchange="onRemConfirmChange()" />
+            I understand this will <strong>modify my AWS account</strong> and I have verified the resource above.
+          </label>
+          <div class="rem-modal-actions">
+            <button class="rem-cancel-btn" onclick="closeRemediationModal()">Cancel</button>
+            <button class="rem-confirm-btn" id="remConfirmBtn" onclick="confirmRemediate()" disabled>
+              🔧 Confirm &amp; Remediate
+            </button>
+          </div>
+        </div>
+        <div id="remStepsWrap" style="display:none">
+          <div class="rem-steps-header">📋 Remediation Steps</div>
+          <div class="rem-steps-list" id="remSteps"></div>
+          <div class="rem-done" id="remDoneMsg" style="display:none"></div>
+          <div class="rem-modal-actions" style="margin-top:1rem">
+            <button class="rem-cancel-btn" onclick="closeRemediationModal()">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

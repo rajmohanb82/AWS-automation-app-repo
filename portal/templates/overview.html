@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Overview · {{ org_name }}{% endblock %}
+{% block page %}overview{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <p class="lede">
+      {% if mode == 'msp' %}
+      MSP layout. Choose a customer and account in the header, then run a scan.
+      {% elif cardinality == 'single' %}
+      One product. Choose an environment and account in the header.
+      {% else %}
+      Several products. Choose a product, environment, and account in the header.
+      {% endif %}
+    </p>
+  </div>
+</header>
+
+<section class="kpis">
+  <article><span>Accounts</span><strong>{{ account_count }}</strong></article>
+  {% if mode == 'msp' %}
+  <article><span>Customers</span><strong>{{ customer_count }}</strong></article>
+  {% else %}
+  <article><span>Products</span><strong>{{ product_count }}</strong></article>
+  {% endif %}
+  <article>
+    <span>AWS connection</span>
+    <strong>
+      {% if link.mode == 'profile' %}Profile{% elif link.mode == 'sso' %}Identity Center{% else %}Not set{% endif %}
+    </strong>
+  </article>
+</section>
+
+{% if link.mode == 'unset' and user.role == 'admin' %}
+<p class="banner">Choose a local AWS profile or IAM Identity Center in Settings before scanning.</p>
+{% endif %}
+{% if account_count == 0 %}
+<p class="banner">
+  {% if user.role == 'admin' %}
+  Add the first account in Scope.
+  {% else %}
+  An administrator still needs to add an AWS account.
+  {% endif %}
+</p>
+{% endif %}
+
+<section class="grid-3">
+  <a class="card link-card" href="{{ url_for('housekeeping_page') }}">
+    <h2>Housekeeping</h2>
+    <p>Security and hygiene findings, with documented actions and admin-only fixes.</p>
+  </a>
+  <a class="card link-card" href="{{ url_for('cost_page') }}">
+    <h2>Cost</h2>
+    <p>Savings from Cost Optimization Hub and Compute Optimizer. List-price inventory is the fallback.</p>
+  </a>
+  <a class="card link-card" href="{{ url_for('governance_page') }}">
+    <h2>Governance</h2>
+    <p>The same evidence grouped into Well-Architected pillars, plus Trusted Advisor when the account's support plan allows it.</p>
+  </a>
+</section>
+
+<section class="card">
+  <h2>Recent scans</h2>
+  {% if scans %}
+  <table>
+    <thead><tr><th>When</th><th>Kind</th><th>Account</th><th>Region</th><th>Items</th><th>By</th></tr></thead>
+    <tbody>
+      {% for scan in scans %}
+      <tr>
+        <td>{{ scan.created_at }}</td>
+        <td>{{ scan.kind }}</td>
+        <td>{{ scan.account_name }}</td>
+        <td>{{ scan.region }}</td>
+        <td>{{ scan.summary.total or 0 }}</td>
+        <td>{{ scan.actor }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Scans you run will be listed here.</p>
+  {% endif %}
+</section>
+{% endblock %}

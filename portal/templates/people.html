@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}People · {{ org_name }}{% endblock %}
+{% block page %}people{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>People</h1>
+    <p class="lede">Administrators create local accounts. There is no self-registration. New local accounts enroll an authenticator at first sign-in.</p>
+  </div>
+</header>
+<section class="card">
+  <h2>New local account</h2>
+  <form class="inline" method="post" action="{{ url_for('people_create') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="username" placeholder="Username" required>
+    <input name="email" type="email" placeholder="Email" required>
+    <input name="password" type="password" placeholder="Password" minlength="8" required>
+    <select name="role">
+      <option value="viewer">Viewer</option>
+      <option value="admin">Administrator</option>
+    </select>
+    <button type="submit">Create</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Directory</h2>
+  <table>
+    <thead><tr><th>Person</th><th>Role</th><th>Sign-in</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for person in people %}
+      <tr>
+        <td>{{ person.username }}<br><small>{{ person.email }}</small></td>
+        <td>
+          <form method="post" action="{{ url_for('people_role', username=person.username) }}">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <select name="role" onchange="this.form.submit()">
+              <option value="viewer" {% if person.role == 'viewer' %}selected{% endif %}>Viewer</option>
+              <option value="admin" {% if person.role == 'admin' %}selected{% endif %}>Administrator</option>
+            </select>
+          </form>
+        </td>
+        <td>{% if person.oidc_sub %}Identity provider{% elif person.mfa_enrolled %}Authenticator enrolled{% else %}Authenticator pending{% endif %}</td>
+        <td>{% if person.is_active %}Active{% else %}Disabled{% endif %}</td>
+        <td>
+          <details>
+            <summary>Manage</summary>
+            {% if not person.oidc_sub %}
+            <form method="post" action="{{ url_for('people_password', username=person.username) }}" class="stack tight">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input name="password" type="password" minlength="8" placeholder="New password" required>
+              <button type="submit" class="secondary">Update password</button>
+            </form>
+            <form method="post" action="{{ url_for('people_mfa', username=person.username) }}">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button type="submit" class="secondary">Reset authenticator</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('people_active', username=person.username) }}">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button type="submit" class="ghost">{% if person.is_active %}Disable{% else %}Enable{% endif %}</button>
+            </form>
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

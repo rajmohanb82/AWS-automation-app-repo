@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AWS Cost Optimizer — AI-Powered Savings Analysis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/cost_style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header class="co-header">
+  <div class="co-header-inner">
+    <div class="co-logo-group">
+      <div class="co-logo-icon" style="font-size:16px;font-weight:800;color:#10b981;letter-spacing:-0.5px;">OT</div>
+      <div>
+        <h1 class="co-logo-title">Orient Technologies</h1>
+        <p class="co-logo-sub">AWS Cost Optimizer — AI-Powered Savings</p>
+      </div>
+    </div>
+    <div class="co-header-right">
+      <span class="co-badge" id="aiModelBadge">🤖 AI: Ready</span>
+      <a href="http://localhost:5000" class="co-link-badge">🛡️ Housekeeping</a>
+      <a href="http://localhost:8181" class="co-link-badge" style="background: rgba(139, 92, 246, 0.15); color: #c084fc; border-color: rgba(139, 92, 246, 0.3); margin-left: 8px;">📊 Governance</a>
+    </div>
+  </div>
+</header>
+
+<div class="co-layout">
+  <!-- ── SIDEBAR ── -->
+  <aside class="co-sidebar">
+    <div class="co-sidebar-section">
+      <h2 class="co-sidebar-title">Client Account</h2>
+      <p class="co-sidebar-hint">Select a client account to analyze</p>
+
+      <div class="co-field-group">
+        <label class="co-field-label" for="regionSelect">AWS Region</label>
+        <div class="co-select-wrapper">
+          <select id="regionSelect" class="co-field-select">
+            <option value="">Loading regions…</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="co-field-group">
+        <label class="co-field-label" for="accountSelect">Client Account</label>
+        <div class="co-select-wrapper">
+          <select id="accountSelect" class="co-field-select">
+            <option value="">Loading accounts…</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="co-btn-primary" id="connectBtn" onclick="connectAccount()">
+        <span>🔗</span> Connect
+      </button>
+      <div class="co-auth-status" id="authStatus" style="display:none"></div>
+    </div>
+
+    <!-- Identity Card -->
+    <div class="co-identity-card" id="identityCard" style="display:none">
+      <div class="co-identity-header">
+        <span>✅</span>
+        <span class="co-identity-title">Connected</span>
+      </div>
+      <div class="co-identity-rows">
+        <div class="co-identity-row"><span class="co-id-key">Client</span><span class="co-id-val" id="idName">—</span></div>
+        <div class="co-identity-row"><span class="co-id-key">Account</span><span class="co-id-val mono" id="idAccount">—</span></div>
+        <div class="co-identity-row"><span class="co-id-key">Region</span><span class="co-id-val" id="idRegion">—</span></div>
+        <div class="co-identity-row"><span class="co-id-key">Role</span><span class="co-id-val mono" id="idRole">—</span></div>
+      </div>
+      <button class="co-btn-scan" id="scanBtn" onclick="startScan()">
+        <span>🔍</span> Analyze Costs
+      </button>
+    </div>
+
+    <!-- Savings KPIs -->
+    <div class="co-sidebar-kpis" id="sidebarKpis" style="display:none">
+      <div class="co-kpi-mini">
+        <div class="co-kpi-mini-label">Est. Monthly Spend</div>
+        <div class="co-kpi-mini-val green" id="kpiSpend">$—</div>
+      </div>
+      <div class="co-kpi-mini">
+        <div class="co-kpi-mini-label">Potential Savings</div>
+        <div class="co-kpi-mini-val orange" id="kpiSaving">$—</div>
+      </div>
+      <div class="co-kpi-mini">
+        <div class="co-kpi-mini-label">Optimization Score</div>
+        <div class="co-kpi-mini-val blue" id="kpiScore">—</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <main class="co-main">
+
+    <!-- Welcome -->
+    <div id="welcomeState" class="co-welcome">
+      <div class="co-welcome-hero">
+        <div class="co-welcome-icon" style="font-size:28px;font-weight:800;color:var(--green);animation:none;">Orient Technologies</div>
+        <h2 class="co-welcome-title">AI-Powered Cost Optimizer</h2>
+        <p class="co-welcome-desc">
+          Select a client account and scan for resource utilization across EC2, RDS, EBS, ELB, NAT Gateways, and more.
+          Get actionable cost-saving recommendations powered by AI analysis.
+        </p>
+      </div>
+      <div class="co-welcome-services">
+        <div class="co-ws">⚡ EC2 Rightsizing</div>
+        <div class="co-ws">🗄️ RDS Optimization</div>
+        <div class="co-ws">💾 EBS Cleanup</div>
+        <div class="co-ws">⚖️ Load Balancers</div>
+        <div class="co-ws">🌐 NAT Gateways</div>
+        <div class="co-ws">🪣 S3 Tiers</div>
+        <div class="co-ws">🔵 Elastic IPs</div>
+        <div class="co-ws">🌐 Network &amp; VPC</div>
+        <div class="co-ws">🤖 AI Analysis</div>
+      </div>
+    </div>
+
+    <!-- Scanning -->
+    <div id="scanState" class="co-scan-state" style="display:none">
+      <div class="co-scan-orb"></div>
+      <p class="co-scan-title">Analyzing Client Account</p>
+      <p class="co-scan-sub" id="scanSubText">Collecting resource inventory…</p>
+      <div class="co-scan-progress">
+        <div class="co-scan-bar" id="scanBar"></div>
+      </div>
+      <div class="co-scan-steps" id="scanSteps">
+        <div class="co-scan-step active" id="sstep1">📦 Scanning EC2 &amp; EBS</div>
+        <div class="co-scan-step" id="sstep2">🗄️ Scanning RDS</div>
+        <div class="co-scan-step" id="sstep3">⚖️ Scanning ELB, NAT &amp; VPC</div>
+        <div class="co-scan-step" id="sstep4">🤖 Running AI Analysis</div>
+        <div class="co-scan-step" id="sstep5">📊 Building Dashboard</div>
+      </div>
+    </div>
+
+    <!-- Results Dashboard -->
+    <div id="resultsState" style="display:none">
+
+      <!-- KPI Strip -->
+      <div class="co-kpi-strip" id="kpiStrip">
+        <div class="co-kpi-card spend-card">
+          <div class="co-kpi-icon">💸</div>
+          <div class="co-kpi-body">
+            <div class="co-kpi-label">Est. Monthly Spend</div>
+            <div class="co-kpi-value" id="kpiTotalSpend">$0</div>
+            <div class="co-kpi-sub" id="kpiResourceCount">0 resources</div>
+          </div>
+        </div>
+        <div class="co-kpi-card saving-card">
+          <div class="co-kpi-icon">🎯</div>
+          <div class="co-kpi-body">
+            <div class="co-kpi-label">Potential Savings</div>
+            <div class="co-kpi-value savings-val" id="kpiTotalSaving">$0</div>
+            <div class="co-kpi-sub" id="kpiSavingPct">0% of spend</div>
+          </div>
+        </div>
+        <div class="co-kpi-card score-card">
+          <div class="co-kpi-icon">⭐</div>
+          <div class="co-kpi-body">
+            <div class="co-kpi-label">Optimization Score</div>
+            <div class="co-kpi-value score-val" id="kpiOptScore">—</div>
+            <div class="co-kpi-sub" id="kpiScoreLabel">out of 100</div>
+          </div>
+        </div>
+        <div class="co-kpi-card ai-card">
+          <div class="co-kpi-icon">🤖</div>
+          <div class="co-kpi-body">
+            <div class="co-kpi-label">AI Analysis</div>
+            <div class="co-kpi-value ai-val" id="kpiModelUsed">—</div>
+            <div class="co-kpi-sub" id="kpiRecCount">0 recommendations</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="co-toolbar">
+        <div class="co-toolbar-left">
+          <button class="co-filter-btn active" id="filterAll" onclick="setRecFilter('ALL')">All</button>
+          <button class="co-filter-btn high" id="filterHigh" onclick="setRecFilter('HIGH')">🔴 High Priority</button>
+          <button class="co-filter-btn medium" id="filterMedium" onclick="setRecFilter('MEDIUM')">🟡 Medium</button>
+          <button class="co-filter-btn low" id="filterLow" onclick="setRecFilter('LOW')">🟢 Low</button>
+        </div>
+        <div class="co-toolbar-right">
+          <button class="co-action-btn btn-pdf" id="reportBtn" onclick="downloadCostReport()">
+            <span>📄</span> Download PDF Report
+          </button>
+          <button class="co-action-btn" onclick="exportCostXLSX()">📊 Export XLSX</button>
+          <button class="co-action-btn" onclick="startScan()">🔄 Re-scan</button>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="co-charts-row">
+        <div class="co-chart-card wide">
+          <div class="co-chart-title">💸 Monthly Cost by Service</div>
+          <div class="co-chart-wrap"><canvas id="costByServiceChart"></canvas></div>
+        </div>
+        <div class="co-chart-card">
+          <div class="co-chart-title">🎯 Savings Opportunity</div>
+          <div class="co-chart-wrap donut-wrap"><canvas id="savingsDonutChart"></canvas></div>
+          <div class="co-donut-legend" id="donutLegend"></div>
+        </div>
+      </div>
+
+      <!-- Second Charts Row -->
+      <div class="co-charts-row">
+        <div class="co-chart-card">
+          <div class="co-chart-title">📂 Recommendations by Category</div>
+          <div class="co-chart-wrap"><canvas id="categoryChart"></canvas></div>
+        </div>
+        <div class="co-chart-card wide">
+          <div class="co-chart-title">🔥 Resource Utilization Heatmap</div>
+          <div class="co-heatmap-wrap" id="utilizationHeatmap"></div>
+        </div>
+      </div>
+
+      <!-- AI Recommendations Table -->
+      <div class="co-rec-section">
+        <div class="co-rec-header">
+          <h3 class="co-rec-title">🤖 AI Recommendations</h3>
+          <span class="co-rec-count" id="recTableCount">0 recommendations</span>
+        </div>
+        <div class="co-rec-table-wrap">
+          <table class="co-rec-table" id="recTable">
+            <thead>
+              <tr>
+                <th onclick="sortTable('priority')">Priority ↕</th>
+                <th onclick="sortTable('service')">Service ↕</th>
+                <th>Resource</th>
+                <th onclick="sortTable('current_monthly_cost')">Current Cost ↕</th>
+                <th onclick="sortTable('projected_monthly_cost')">After Fix ↕</th>
+                <th onclick="sortTable('monthly_saving')">Saving ↕</th>
+                <th>Category</th>
+                <th>Action</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody id="recTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Errors -->
+      <div id="scanErrors" style="display:none" class="co-scan-errors"></div>
+
+    </div>
+  </main>
+</div>
+
+<script src="/static/cost_app.js"></script>
+</body>
+</html>

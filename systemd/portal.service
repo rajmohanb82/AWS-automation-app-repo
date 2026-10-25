@@ -1,0 +1,14 @@
+[Unit]
+Description=Operations console
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/cloud-ops-portal
+Environment=HOST=0.0.0.0
+Environment=PORT=5080
+ExecStart=/opt/cloud-ops-portal/.venv/bin/python /opt/cloud-ops-portal/run.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

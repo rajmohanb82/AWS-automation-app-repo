@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Housekeeping · {{ org_name }}{% endblock %}
+{% block page %}housekeeping{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Housekeeping</h1>
+    <p class="lede">Each finding names the resource, the evidence, and the AWS documentation for the recommended action.</p>
+  </div>
+  <div class="actions">
+    <button type="button" id="scan-btn">Scan account</button>
+    <button type="button" class="secondary" id="pdf-btn">Download PDF</button>
+  </div>
+</header>
+<div id="work-status" class="note" hidden></div>
+<div class="filters" id="severity-filters" hidden>
+  <button type="button" class="chip" data-severity="ALL">All</button>
+  <button type="button" class="chip" data-severity="HIGH">High</button>
+  <button type="button" class="chip" data-severity="MEDIUM">Medium</button>
+  <button type="button" class="chip" data-severity="LOW">Low</button>
+  <button type="button" class="chip" data-severity="INFO">Info</button>
+</div>
+<div id="work-summary" class="kpis" hidden></div>
+<div class="card table-card">
+  <div id="work-results"><p class="empty">Choose an account and region, then scan.</p></div>
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create User — Admin Panel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0e1a; color: #eef0f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background: #141924; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 40px; width: 100%; max-width: 440px; }
+        h2 { margin-bottom: 24px; font-size: 20px; }
+        .form-group { margin-bottom: 18px; }
+        label { display: block; font-size: 13px; color: #8892a4; margin-bottom: 6px; }
+        input, select { width: 100%; padding: 10px 14px; background: #1a2030; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #eef0f5; font-size: 14px; outline: none; }
+        input:focus, select:focus { border-color: #10b981; }
+        select { cursor: pointer; }
+        .btn { width: 100%; padding: 12px; background: #10b981; border: none; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+        .btn:hover { background: #0d9668; }
+        .btn-back { display: inline-block; margin-top: 16px; font-size: 13px; color: #8892a4; text-decoration: none; }
+        .btn-back:hover { color: #eef0f5; }
+        .flash { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); padding: 10px 14px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; color: #f87171; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Create New User</h2>
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="flash">{{ messages[0] }}</div>
+        {% endif %}
+        {% endwith %}
+        <form method="POST">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" required placeholder="e.g. john.doe">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" name="email" required placeholder="e.g. john@company.com">
+            </div>
+            <div class="form-group">
+                <label>Password (min 8 characters)</label>
+                <input type="password" name="password" required minlength="8" placeholder="Temporary password">
+            </div>
+            <div class="form-group">
+                <label>Role</label>
+                <select name="role">
+                    <option value="viewer">Viewer — can use apps only</option>
+                    <option value="admin">Admin — can manage users + use apps</option>
+                </select>
+            </div>
+            <button type="submit" class="btn">Create User</button>
+        </form>
+        <a href="/" class="btn-back">← Back to Dashboard</a>
+    </div>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<form class="stack" method="post" action="{{ form_action }}">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <fieldset>
+    <legend>How scans reach AWS</legend>
+    <label class="choice"><input type="radio" name="mode" value="profile" {% if link.mode == 'profile' %}checked{% endif %}> Local AWS profile on this machine</label>
+    <label class="choice"><input type="radio" name="mode" value="sso" {% if link.mode == 'sso' %}checked{% endif %}> IAM Identity Center</label>
+    {% if show_later %}
+    <label class="choice"><input type="radio" name="mode" value="unset" {% if link.mode != 'profile' and link.mode != 'sso' %}checked{% endif %}> Decide later in Settings</label>
+    {% endif %}
+  </fieldset>
+
+  <label>Local profile
+    <select name="profile_name" id="profile_name">
+      {% if not profiles %}
+      <option value="">No profiles found in the AWS config on this machine</option>
+      {% endif %}
+      {% for name in profiles %}
+      <option value="{{ name }}" {% if name == link.profile_name %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <div class="split">
+    <label>Identity Center start URL
+      <input id="sso_start_url" name="sso_start_url" value="{{ link.sso_start_url }}" placeholder="https://example.awsapps.com/start" autocomplete="off">
+    </label>
+    <label>SSO region
+      <select id="sso_region" name="sso_region">
+        {% for region in regions %}
+        <option value="{{ region.code }}" {% if region.code == (link.sso_region or 'us-east-1') %}selected{% endif %}>{{ region.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="split">
+    <label>Identity Center account ID
+      <input id="sso_account_id" name="sso_account_id" value="{{ link.sso_account_id }}" inputmode="numeric" maxlength="12" placeholder="123456789012">
+    </label>
+    <label>Permission set
+      <input id="sso_role_name" name="sso_role_name" value="{{ link.sso_role_name }}" placeholder="AdministratorAccess">
+    </label>
+  </div>
+  <label>Region used for the connection test
+    <select id="link-region">
+      {% for region in regions %}
+      <option value="{{ region.code }}" {% if region.code == 'ap-south-1' %}selected{% endif %}>{{ region.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div class="actions">
+    <button type="submit">{{ submit_label }}</button>
+    <button type="button" class="secondary" id="aws-test">Test connection</button>
+    <button type="button" class="secondary" id="sso-start">Start Identity Center sign-in</button>
+  </div>
+</form>
+<div id="sso-box" class="note" hidden></div>
+<div id="aws-result" class="note" hidden></div>
+{% if link.sso_connected %}
+<p class="note">Identity Center session is active for account {{ link.sso_account_id }}.</p>
+{% endif %}

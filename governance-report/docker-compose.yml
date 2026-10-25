@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: msp_postgres
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: rootpassword
+    ports:
+      - "54444:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    networks:
+      - msp_network
+    restart: unless-stopped
+
+  infisical:
+    image: infisical/infisical:latest
+    container_name: msp_infisical
+    environment:
+      - NODE_ENV=production
+      - DB_CONNECTION_URI=postgres://root:rootpassword@postgres:5432/infisical_db
+      - REDIS_URL=redis://redis:6379
+      - ENCRYPTION_KEY=b2c58979148d88e63adbc1650b8bdf71
+      - AUTH_SECRET=55c0e1ccff9bd4ef5bb5026c043e0d86
+      - JWT_SIGNUP_SECRET=77c0e1ccff9bd4ef5bb5026c043e0d87
+      - JWT_AUTH_SECRET=99c0e1ccff9bd4ef5bb5026c043e0d89
+      - JWT_REFRESH_SECRET=88c0e1ccff9bd4ef5bb5026c043e0d88
+    ports:
+      - "8182:8080"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - msp_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: msp_redis
+    networks:
+      - msp_network
+    restart: unless-stopped
+
+
+  app:
+    image: msp_governance_app
+    container_name: msp_governance_app
+    user: "root"
+    ports:
+      - "127.0.0.1:8183:3000"
+    environment:
+      - DATABASE_URL=postgres://root:rootpassword@postgres:5432/aws_report_db
+      - INFISICAL_URL=http://infisical:8080
+      - NODE_ENV=production
+      - HOME=/root
+    volumes:
+      - ~/.aws:/home/nextjs/.aws:ro
+      - ~/.aws:/root/.aws:ro
+    depends_on:
+      - postgres
+      - infisical
+    networks:
+      - msp_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  msp_network:
+    driver: bridge

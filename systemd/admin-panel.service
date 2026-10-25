@@ -1,0 +1,17 @@
+[Unit]
+Description=AWS Admin Panel Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/admin-panel
+ExecStart=/usr/bin/python3 /root/admin-panel/app.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=AUTH_DB_PATH=/opt/auth/users.db
+Environment=SECRET_KEY=admin-panel-change-me-random-string
+
+[Install]
+WantedBy=multi-user.target

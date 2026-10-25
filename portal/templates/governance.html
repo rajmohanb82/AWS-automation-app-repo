@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Governance · {{ org_name }}{% endblock %}
+{% block page %}governance{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Governance</h1>
+    <p class="lede">Findings are grouped with the Well-Architected pillars. Trusted Advisor is included when this account's support plan exposes the API.</p>
+  </div>
+  <div class="actions">
+    <button type="button" id="scan-btn">Assess posture</button>
+  </div>
+</header>
+<div id="work-status" class="note" hidden></div>
+<div id="pillar-filters" class="filters" hidden></div>
+<div id="advisor-note" class="note" hidden></div>
+<div class="card table-card">
+  <div id="work-results"><p class="empty">Choose an account and region, then assess posture.</p></div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Log — Admin Panel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0e1a; color: #eef0f5; padding: 30px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        h1 { font-size: 24px; }
+        .btn-back { padding: 8px 16px; background: #1a2030; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #8892a4; text-decoration: none; font-size: 13px; }
+        .btn-back:hover { color: #eef0f5; }
+        table { width: 100%; border-collapse: collapse; background: #141924; border-radius: 12px; overflow: hidden; }
+        th { background: #1a2030; padding: 12px 16px; text-align: left; font-size: 12px; color: #8892a4; text-transform: uppercase; }
+        td { padding: 10px 16px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+        .action-login { color: #10b981; }
+        .action-fail { color: #ef4444; }
+        .action-admin { color: #f59e0b; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📋 Audit Log</h1>
+        <a href="/" class="btn-back">← Back to Dashboard</a>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp (UTC)</th>
+                <th>Username</th>
+                <th>Action</th>
+                <th>Detail</th>
+                <th>IP Address</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.timestamp[:19] }}</td>
+                <td>{{ log.username or '—' }}</td>
+                <td class="{{ 'action-login' if 'SUCCESS' in log.action else 'action-fail' if 'FAIL' in log.action or 'BLOCK' in log.action else 'action-admin' }}">{{ log.action }}</td>
+                <td>{{ log.detail or '—' }}</td>
+                <td>{{ log.ip_address or '—' }}</td>
+            </tr>
+            {% endfor %}
+            {% if not logs %}
+            <tr><td colspan="5" style="text-align:center;padding:30px;color:#8892a4">No audit logs yet.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</body>
+</html>

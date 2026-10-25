@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>AWS Housekeeping Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <!-- SheetJS for XLSX -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    /* ── Variables ─────────────────────────────────────── */
+    :root {
+      --amber:   #FF9900;
+      --red:     #DC2626;
+      --yellow:  #D97706;
+      --green:   #16A34A;
+      --blue:    #2563EB;
+      --gray-50: #F9FAFB;
+      --gray-100:#F3F4F6;
+      --gray-200:#E5E7EB;
+      --gray-300:#D1D5DB;
+      --gray-500:#6B7280;
+      --gray-700:#374151;
+      --gray-900:#111827;
+      --font:  'Inter', sans-serif;
+      --mono:  'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: #fff; color: var(--gray-900); font-size: 13px; line-height: 1.5; }
+
+    /* ── Screen-only controls ──────────────────────────── */
+    .screen-only {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: var(--gray-900);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 100;
+      gap: 12px;
+    }
+    .screen-only h2 { color: #fff; font-size: 15px; font-weight: 600; }
+    .ctrl-btns { display: flex; gap: 10px; }
+    .btn-pdf {
+      padding: 9px 20px;
+      background: linear-gradient(135deg, #DC2626, #b91c1c);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      box-shadow: 0 2px 8px rgba(220,38,38,0.4);
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn-pdf:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn-xlsx {
+      padding: 9px 20px;
+      background: linear-gradient(135deg, #16A34A, #15803d);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      box-shadow: 0 2px 8px rgba(22,163,74,0.4);
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn-xlsx:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn-back {
+      padding: 9px 20px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-back:hover { background: rgba(255,255,255,0.18); }
+
+    /* ── Report wrapper (shifts down under fixed bar on screen) ── */
+    .report-wrap { padding-top: 64px; }
+
+    /* ── Cover page ────────────────────────────────────── */
+    .cover {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      color: #fff;
+      padding: 64px 72px 56px;
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+    }
+    .cover::before {
+      content: '';
+      position: absolute;
+      top: -80px; right: -80px;
+      width: 400px; height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,153,0,0.15), transparent 70%);
+    }
+    .cover-logo { display: flex; align-items: center; gap: 14px; margin-bottom: 56px; }
+    .cover-logo-box {
+      width: 52px; height: 52px;
+      background: rgba(255,153,0,0.15);
+      border: 1.5px solid rgba(255,153,0,0.4);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .cover-logo-text { font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 0.5px; }
+    .cover-logo-name { font-size: 17px; font-weight: 700; color: #fff; }
+    .cover h1 {
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 16px;
+      letter-spacing: -1px;
+    }
+    .cover h1 span { color: var(--amber); }
+    .cover-sub { font-size: 16px; color: rgba(255,255,255,0.6); margin-bottom: 48px; }
+    .cover-meta {
+      display: grid;
+      grid-template-columns: repeat(3, auto);
+      gap: 32px;
+    }
+    .cover-meta-item {}
+    .cover-meta-label { font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+    .cover-meta-value { font-size: 15px; font-weight: 600; color: #fff; font-family: var(--mono); }
+    .cover-meta-value.normal { font-family: var(--font); }
+
+    /* ── Summary section ───────────────────────────────── */
+    .section { padding: 40px 72px; }
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--gray-900);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 2px;
+      background: var(--gray-200);
+      margin-left: 8px;
+    }
+    .section-sub { font-size: 13px; color: var(--gray-500); margin-bottom: 24px; }
+
+    /* Summary cards */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .sum-card {
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      border: 1.5px solid;
+    }
+    .sum-card.total  { border-color: #CBD5E1; background: #F8FAFC; }
+    .sum-card.high   { border-color: #FECACA; background: #FEF2F2; }
+    .sum-card.medium { border-color: #FDE68A; background: #FFFBEB; }
+    .sum-card.low    { border-color: #BBF7D0; background: #F0FDF4; }
+    .sum-num {
+      font-size: 40px;
+      font-weight: 800;
+      font-family: var(--mono);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .sum-card.total  .sum-num { color: #0F172A; }
+    .sum-card.high   .sum-num { color: var(--red); }
+    .sum-card.medium .sum-num { color: var(--yellow); }
+    .sum-card.low    .sum-num { color: var(--green); }
+    .sum-label { font-size: 12px; font-weight: 500; color: var(--gray-500); }
+
+    /* Category breakdown bar */
+    .cat-breakdown { margin-bottom: 0; }
+    .cat-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--gray-100);
+    }
+    .cat-row:last-child { border-bottom: none; }
+    .cat-name { width: 160px; font-size: 12px; font-weight: 500; color: var(--gray-700); }
+    .cat-bar-wrap { flex: 1; height: 8px; background: var(--gray-100); border-radius: 4px; overflow: hidden; }
+    .cat-bar { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--amber), #FF6B00); }
+    .cat-count { width: 32px; text-align: right; font-size: 12px; font-weight: 600; color: var(--gray-700); }
+    .cat-badges { display: flex; gap: 4px; }
+
+    /* ── Findings table ────────────────────────────────── */
+    .findings-section { padding: 32px 72px; page-break-before: auto; }
+    .cat-heading {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--gray-900);
+      margin-bottom: 12px;
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cat-heading:first-of-type { margin-top: 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 4px;
+      font-size: 11.5px;
+    }
+    thead th {
+      background: var(--gray-900);
+      color: #fff;
+      font-weight: 600;
+      font-size: 10.5px;
+      letter-spacing: 0.4px;
+      padding: 9px 12px;
+      text-align: left;
+    }
+    thead th:first-child { border-radius: 6px 0 0 0; }
+    thead th:last-child  { border-radius: 0 6px 0 0; }
+    tbody tr:nth-child(even) { background: var(--gray-50); }
+    tbody tr:hover { background: #EFF6FF; }
+    tbody td { padding: 9px 12px; border-bottom: 1px solid var(--gray-200); color: var(--gray-700); vertical-align: top; }
+    td.mono { font-family: var(--mono); font-size: 10.5px; color: var(--amber); }
+
+    /* Severity badges */
+    .badge {
+      display: inline-block;
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+    .badge-HIGH   { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+    .badge-MEDIUM { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+    .badge-LOW    { background: #D1FAE5; color: #065F46; border: 1px solid #A7F3D0; }
+    .badge-INFO   { background: #DBEAFE; color: #1E40AF; border: 1px solid #BFDBFE; }
+
+    /* ── Footer ────────────────────────────────────────── */
+    .report-footer {
+      border-top: 2px solid var(--gray-200);
+      padding: 20px 72px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--gray-500);
+    }
+
+    /* ── Print styles ──────────────────────────────────── */
+    @media print {
+      .screen-only { display: none !important; }
+      .report-wrap { padding-top: 0; }
+      @page {
+        size: A4;
+        margin: 0;
+      }
+      .cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .sum-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      thead { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      tbody tr:nth-child(even) { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      tr { page-break-inside: avoid; }
+      .cat-heading { page-break-before: auto; page-break-after: avoid; }
+      table { page-break-inside: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Screen-only action bar -->
+<div class="screen-only">
+  <h2>📄 AWS Housekeeping Report Preview</h2>
+  <div class="ctrl-btns">
+    <button class="btn-back" onclick="window.close()">← Back to Dashboard</button>
+    <button class="btn-xlsx" onclick="exportXLSX()">📊 Download XLSX</button>
+    <button class="btn-pdf"  onclick="window.print()">🖨️ Save as PDF</button>
+  </div>
+</div>
+
+<div class="report-wrap" id="reportWrap">
+
+  <!-- COVER -->
+  <div class="cover" id="cover">
+    <div class="cover-logo">
+      <div class="cover-logo-box">
+        <svg width="26" height="26" viewBox="0 0 40 40" fill="none">
+          <path d="M20 4L36 12V28L20 36L4 28V12L20 4Z" stroke="#FF9900" stroke-width="2.5" fill="none"/>
+          <path d="M20 4V36M4 12L36 28M36 12L4 28" stroke="#FF9900" stroke-width="1.2" opacity="0.5"/>
+        </svg>
+      </div>
+      <div>
+        <div class="cover-logo-name">AWS Housekeeping</div>
+        <div class="cover-logo-text">Security &amp; Cost Optimization</div>
+      </div>
+    </div>
+    <h1>Account <span>Housekeeping</span><br/>Recommendations Report</h1>
+    <div class="cover-sub">Automated scan results — review and act on findings to improve security, reduce costs, and maintain operational excellence.</div>
+    <div class="cover-meta">
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Account ID</div>
+        <div class="cover-meta-value" id="covAccountId">—</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Region Scanned</div>
+        <div class="cover-meta-value" id="covRegion">—</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Report Generated</div>
+        <div class="cover-meta-value normal" id="covDate">—</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">SSO Profile</div>
+        <div class="cover-meta-value normal" id="covProfile">—</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Role</div>
+        <div class="cover-meta-value normal" id="covRole">—</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Total Findings</div>
+        <div class="cover-meta-value" id="covTotal">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="section" id="summarySection">
+    <div class="section-title">Executive Summary</div>
+    <div class="section-sub">Overview of findings by severity and service category</div>
+    <div class="summary-grid" id="summaryGrid"></div>
+
+    <div class="section-title" style="margin-top:16px">Findings by Category</div>
+    <div class="cat-breakdown" id="catBreakdown"></div>
+  </div>
+
+  <!-- DETAILED FINDINGS -->
+  <div class="findings-section" id="findingsSection"></div>
+
+  <!-- FOOTER -->
+  <div class="report-footer">
+    <span>AWS Housekeeping UI &nbsp;·&nbsp; Generated <span id="footerDate"></span></span>
+    <span>Confidential — Internal Use Only</span>
+  </div>
+</div>
+
+<script>
+const CATEGORY_ICONS = {
+  "EC2":"⚡","IAM":"🔐","S3":"🪣","Security Groups":"🛡️",
+  "RDS":"🗄️","ELB":"⚖️","Lambda":"λ","CloudWatch":"📊"
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  const raw = sessionStorage.getItem("hk_report_data");
+  if (!raw) {
+    document.getElementById("reportWrap").innerHTML =
+      `<div style="padding:80px;text-align:center;font-size:18px;color:#6B7280;">
+        No report data found. Please go back to the dashboard and scan first.
+       </div>`;
+    return;
+  }
+
+  const { identity, findings, scannedAt } = JSON.parse(raw);
+  renderReport(identity, findings, scannedAt);
+});
+
+function renderReport(identity, findings, scannedAt) {
+  const dt = new Date(scannedAt);
+  const dateStr = dt.toLocaleString("en-GB", {
+    day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"
+  });
+
+  // Cover
+  document.getElementById("covAccountId").textContent = identity.account_id || "—";
+  document.getElementById("covRegion").textContent     = identity.region     || "—";
+  document.getElementById("covProfile").textContent    = identity.profile    || "—";
+  document.getElementById("covRole").textContent       = (identity.arn || "").split("/").pop() || identity.sso_role_name || "—";
+  document.getElementById("covDate").textContent       = dateStr;
+  document.getElementById("covTotal").textContent      = findings.filter(f=>f.severity!=="INFO").length;
+  document.getElementById("footerDate").textContent    = dateStr;
+
+  // Summary grid
+  const counts = { HIGH:0, MEDIUM:0, LOW:0 };
+  const total = findings.filter(f => f.severity!=="INFO");
+  total.forEach(f => { if (counts[f.severity] !== undefined) counts[f.severity]++; });
+
+  document.getElementById("summaryGrid").innerHTML = `
+    <div class="sum-card total">
+      <div class="sum-num">${total.length}</div>
+      <div class="sum-label">Total Issues</div>
+    </div>
+    <div class="sum-card high">
+      <div class="sum-num">${counts.HIGH}</div>
+      <div class="sum-label">🔴 High Severity</div>
+    </div>
+    <div class="sum-card medium">
+      <div class="sum-num">${counts.MEDIUM}</div>
+      <div class="sum-label">🟡 Medium Severity</div>
+    </div>
+    <div class="sum-card low">
+      <div class="sum-num">${counts.LOW}</div>
+      <div class="sum-label">🟢 Low Severity</div>
+    </div>
+  `;
+
+  // Category breakdown
+  const groups = {};
+  findings.forEach(f => {
+    if (!groups[f.category]) groups[f.category] = [];
+    groups[f.category].push(f);
+  });
+  const maxCount = Math.max(...Object.values(groups).map(g => g.length), 1);
+
+  document.getElementById("catBreakdown").innerHTML = Object.entries(groups).map(([cat, items]) => {
+    const h = items.filter(i => i.severity==="HIGH").length;
+    const m = items.filter(i => i.severity==="MEDIUM").length;
+    const l = items.filter(i => i.severity==="LOW").length;
+    const pct = Math.round((items.length / maxCount) * 100);
+    return `
+      <div class="cat-row">
+        <div class="cat-name">${CATEGORY_ICONS[cat]||"📋"} ${cat}</div>
+        <div class="cat-bar-wrap"><div class="cat-bar" style="width:${pct}%"></div></div>
+        <div class="cat-count">${items.length}</div>
+        <div class="cat-badges">
+          ${h ? `<span class="badge badge-HIGH">${h} H</span>` : ""}
+          ${m ? `<span class="badge badge-MEDIUM">${m} M</span>` : ""}
+          ${l ? `<span class="badge badge-LOW">${l} L</span>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+
+  // Detailed findings
+  const findingsHtml = Object.entries(groups).map(([cat, items]) => `
+    <div class="cat-heading">${CATEGORY_ICONS[cat]||"📋"} ${cat} <span style="font-size:13px;font-weight:400;color:#6B7280;">(${items.length} findings)</span></div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:90px">Severity</th>
+          <th style="width:220px">Finding</th>
+          <th style="width:160px">Resource ID</th>
+          <th>Details</th>
+          <th style="width:220px">Recommended Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map(f => `
+          <tr>
+            <td><span class="badge badge-${f.severity}">${f.severity}</span></td>
+            <td><strong>${esc(f.title)}</strong></td>
+            <td class="mono">${esc(f.resource_id)}</td>
+            <td>${esc(f.details)}</td>
+            <td style="color:#1D4ED8;font-size:11px">${esc(f.action)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `).join("");
+
+  document.getElementById("findingsSection").innerHTML = `
+    <div class="section-title">Detailed Findings</div>
+    <div class="section-sub">Full list of all identified issues grouped by AWS service</div>
+    ${findingsHtml}
+  `;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+// ── XLSX Export ───────────────────────────────────────
+function exportXLSX() {
+  const raw = sessionStorage.getItem("hk_report_data");
+  if (!raw) return;
+  const { identity, findings, scannedAt } = JSON.parse(raw);
+
+  const wb = XLSX.utils.book_new();
+
+  /* Sheet 1: Summary */
+  const counts = { HIGH:0, MEDIUM:0, LOW:0, INFO:0 };
+  findings.forEach(f => { if (counts[f.severity]!==undefined) counts[f.severity]++; });
+  const summaryData = [
+    ["AWS Housekeeping Report"],
+    [""],
+    ["Account ID",   identity.account_id],
+    ["Region",       identity.region],
+    ["Profile",      identity.profile],
+    ["Role",         (identity.arn||"").split("/").pop() || identity.sso_role_name],
+    ["Scanned At",   new Date(scannedAt).toLocaleString()],
+    [""],
+    ["Severity", "Count"],
+    ["HIGH",   counts.HIGH],
+    ["MEDIUM", counts.MEDIUM],
+    ["LOW",    counts.LOW],
+    ["Total",  counts.HIGH + counts.MEDIUM + counts.LOW],
+  ];
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+  wsSummary["!cols"] = [{wch:20},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+  /* Sheet 2: All Findings */
+  const headers = ["Category","Severity","Title","Resource ID","Details","Recommended Action"];
+  const rows = findings.map(f => [f.category, f.severity, f.title, f.resource_id, f.details, f.action]);
+  const wsFindings = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  wsFindings["!cols"] = [{wch:18},{wch:10},{wch:40},{wch:30},{wch:60},{wch:60}];
+  XLSX.utils.book_append_sheet(wb, wsFindings, "All Findings");
+
+  /* Per-category sheets */
+  const groups = {};
+  findings.forEach(f => { (groups[f.category] = groups[f.category]||[]).push(f); });
+  Object.entries(groups).forEach(([cat, items]) => {
+    const sheetName = cat.replace(/[/\\?*[\]]/g,"").substring(0, 31);
+    const data = [headers, ...items.map(f => [f.category, f.severity, f.title, f.resource_id, f.details, f.action])];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws["!cols"] = [{wch:18},{wch:10},{wch:40},{wch:30},{wch:60},{wch:60}];
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+
+  const ts = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `aws-housekeeping-${identity.account_id||"report"}-${ts}.xlsx`);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel — User Management</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0e1a; color: #eef0f5; padding: 30px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        h1 { font-size: 24px; }
+        .header-actions a { padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; margin-left: 10px; }
+        .btn-create { background: #10b981; color: #fff; }
+        .btn-audit { background: #3b82f6; color: #fff; }
+        .btn-logout { background: #ef4444; color: #fff; }
+        .flash { padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; }
+        .flash-success { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); color: #10b981; }
+        .flash-error { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #f87171; }
+        table { width: 100%; border-collapse: collapse; background: #141924; border-radius: 12px; overflow: hidden; }
+        th { background: #1a2030; padding: 12px 16px; text-align: left; font-size: 12px; color: #8892a4; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+        .badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge-admin { background: rgba(245,158,11,0.2); color: #f59e0b; }
+        .badge-viewer { background: rgba(59,130,246,0.2); color: #3b82f6; }
+        .badge-yes { background: rgba(16,185,129,0.2); color: #10b981; }
+        .badge-no { background: rgba(239,68,68,0.2); color: #f87171; }
+        .actions form { display: inline; }
+        .actions button, .actions input[type="submit"] { padding: 4px 10px; border: 1px solid rgba(255,255,255,0.1); background: #1a2030; color: #8892a4; border-radius: 4px; font-size: 11px; cursor: pointer; margin-right: 4px; }
+        .actions button:hover, .actions input[type="submit"]:hover { background: #2a3040; color: #eef0f5; }
+        .actions .btn-danger { border-color: rgba(239,68,68,0.3); color: #f87171; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+        .modal { background: #141924; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 30px; width: 360px; }
+        .modal h3 { margin-bottom: 16px; }
+        .modal input { width: 100%; padding: 10px; background: #1a2030; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #eef0f5; margin-bottom: 12px; font-size: 14px; }
+        .modal .btn-submit { width: 100%; padding: 10px; background: #10b981; border: none; border-radius: 6px; color: #fff; cursor: pointer; font-size: 14px; }
+        .modal .btn-cancel { width: 100%; padding: 10px; background: transparent; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #8892a4; cursor: pointer; font-size: 14px; margin-top: 8px; }
+        .stats { display: flex; gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: #141924; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px 20px; flex: 1; }
+        .stat-card .num { font-size: 24px; font-weight: 700; }
+        .stat-card .label { font-size: 12px; color: #8892a4; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>👤 User Management</h1>
+        <div class="header-actions">
+            <a href="/create-user" class="btn-create">+ Create User</a>
+            <a href="/audit-log" class="btn-audit">📋 Audit Log</a>
+            <a href="/logout" class="btn-logout">Logout</a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for cat, msg in messages %}
+    <div class="flash flash-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="stats">
+        <div class="stat-card"><div class="num">{{ users|length }}</div><div class="label">Total Users</div></div>
+        <div class="stat-card"><div class="num">{{ users|selectattr('is_active')|list|length }}</div><div class="label">Active</div></div>
+        <div class="stat-card"><div class="num">{{ users|selectattr('mfa_enrolled')|list|length }}</div><div class="label">MFA Enrolled</div></div>
+        <div class="stat-card"><div class="num">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</div><div class="label">Admins</div></div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>MFA</th>
+                <th>Active</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td><strong>{{ user.username }}</strong></td>
+                <td>{{ user.email }}</td>
+                <td><span class="badge badge-{{ user.role }}">{{ user.role }}</span></td>
+                <td><span class="badge badge-{{ 'yes' if user.mfa_enrolled else 'no' }}">{{ 'Yes' if user.mfa_enrolled else 'No' }}</span></td>
+                <td><span class="badge badge-{{ 'yes' if user.is_active else 'no' }}">{{ 'Yes' if user.is_active else 'No' }}</span></td>
+                <td>{{ user.last_login[:16] if user.last_login else 'Never' }}</td>
+                <td class="actions">
+                    <button onclick="showResetPw('{{ user.username }}')">Reset PW</button>
+                    <form method="POST" action="/reset-mfa/{{ user.username }}" onsubmit="return confirm('Reset MFA for {{ user.username }}?')">
+                        <input type="submit" value="Reset MFA">
+                    </form>
+                    <form method="POST" action="/toggle-user/{{ user.username }}">
+                        <input type="submit" value="{{ 'Disable' if user.is_active else 'Enable' }}" class="{{ 'btn-danger' if user.is_active else '' }}">
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Reset Password Modal -->
+    <div class="modal-overlay" id="resetPwModal">
+        <div class="modal">
+            <h3>Reset Password</h3>
+            <form id="resetPwForm" method="POST">
+                <input type="password" name="new_password" placeholder="New password (min 8 chars)" required minlength="8">
+                <button type="submit" class="btn-submit">Reset Password</button>
+                <button type="button" class="btn-cancel" onclick="hideResetPw()">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function showResetPw(username) {
+            document.getElementById('resetPwForm').action = '/reset-password/' + username;
+            document.getElementById('resetPwModal').style.display = 'flex';
+        }
+        function hideResetPw() {
+            document.getElementById('resetPwModal').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

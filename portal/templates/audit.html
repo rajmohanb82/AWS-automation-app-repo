@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Audit · {{ org_name }}{% endblock %}
+{% block page %}audit{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Audit</h1>
+    <p class="lede">Sign-in and administration history, plus scan and remediation events stored for a later MSPOPS and ITSM connection.</p>
+  </div>
+</header>
+<section class="card">
+  <h2>Activity</h2>
+  <table>
+    <thead><tr><th>When</th><th>Person</th><th>Action</th><th>Detail</th><th>IP</th></tr></thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.timestamp }}</td>
+        <td>{{ log.username }}</td>
+        <td>{{ log.action }}</td>
+        <td>{{ log.detail }}</td>
+        <td>{{ log.ip_address }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+<section class="card">
+  <h2>Integration events</h2>
+  <p class="hint">These stay in this console until an MSPOPS or ITSM destination is connected. Nothing is sent yet.</p>
+  {% if events %}
+  <table>
+    <thead><tr><th>When</th><th>Event</th><th>Payload</th></tr></thead>
+    <tbody>
+      {% for event in events %}
+      <tr>
+        <td>{{ event.created_at }}</td>
+        <td>{{ event.event_type }}</td>
+        <td><pre>{{ event.payload_json }}</pre></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Events appear after the first scan or remediation.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,9 @@
+flask>=3.0.0
+boto3>=1.34.0
+botocore>=1.34.0
+flask-cors>=4.0.0
+fpdf2>=2.7.0
+matplotlib>=3.7.0
+numpy>=1.24.0
+# Optional: uncomment to enable OpenAI GPT-4o AI recommendations
+# openai>=1.0.0

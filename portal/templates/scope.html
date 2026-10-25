@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Scope · {{ org_name }}{% endblock %}
+{% block page %}scope{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Scope</h1>
+    <p class="lede">
+      {% if mode == 'msp' %}
+      Customers own AWS accounts. Set a role name when scans must assume into that account.
+      {% elif cardinality == 'single' %}
+      This installation has one product. Environments such as development, staging, and production own the accounts.
+      {% else %}
+      Each product has environments, and each environment owns AWS accounts.
+      {% endif %}
+    </p>
+  </div>
+</header>
+
+{% if mode == 'msp' %}
+<section class="card">
+  <h2>Customers</h2>
+  <form class="inline" method="post" action="{{ url_for('scope_customer') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="name" placeholder="Customer name" required>
+    <button type="submit">Add customer</button>
+  </form>
+  {% if tree.customers %}
+  <ul class="plain">
+    {% for customer in tree.customers %}
+    <li>
+      <span>{{ customer.name }} <small>{{ customer.accounts|length }} accounts</small></span>
+      <form method="post" action="{{ url_for('scope_delete') }}" onsubmit="return confirm('Remove this customer and its accounts?');">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="table" value="customers">
+        <input type="hidden" name="id" value="{{ customer.id }}">
+        <button class="ghost" type="submit">Remove</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No customers yet.</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="card">
+  <h2>Products</h2>
+  {% if cardinality == 'multiple' or not tree.products %}
+  <form class="inline" method="post" action="{{ url_for('scope_product') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="name" placeholder="Product name" required>
+    <button type="submit">Add product</button>
+  </form>
+  {% endif %}
+  {% if tree.products %}
+  <ul class="plain">
+    {% for product in tree.products %}
+    <li>
+      <span>{{ product.name }}</span>
+      <form method="post" action="{{ url_for('scope_delete') }}" onsubmit="return confirm('Remove this product, its environments, and their accounts?');">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="table" value="products">
+        <input type="hidden" name="id" value="{{ product.id }}">
+        <button class="ghost" type="submit">Remove</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">Name the product to start.</p>
+  {% endif %}
+</section>
+<section class="card">
+  <h2>Environments</h2>
+  {% if tree.products %}
+  <form class="inline" method="post" action="{{ url_for('scope_environment') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <select name="product_id">
+      {% for product in tree.products %}
+      <option value="{{ product.id }}">{{ product.name }}</option>
+      {% endfor %}
+    </select>
+    <input name="name" placeholder="development, staging, production" required>
+    <button type="submit">Add environment</button>
+  </form>
+  {% endif %}
+  {% set ns = namespace(count=0) %}
+  <ul class="plain">
+    {% for product in tree.products %}
+      {% for env in product.environments %}
+      {% set ns.count = ns.count + 1 %}
+      <li>
+        <span>{{ product.name }} / {{ env.name }} <small>{{ env.accounts|length }} accounts</small></span>
+        <form method="post" action="{{ url_for('scope_delete') }}" onsubmit="return confirm('Remove this environment and its accounts?');">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="table" value="environments">
+          <input type="hidden" name="id" value="{{ env.id }}">
+          <button class="ghost" type="submit">Remove</button>
+        </form>
+      </li>
+      {% endfor %}
+    {% endfor %}
+  </ul>
+  {% if ns.count == 0 %}<p class="empty">No environments yet.</p>{% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>AWS accounts</h2>
+  <form class="stack" method="post" action="{{ url_for('scope_account') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if mode == 'msp' %}
+    <label>Customer
+      <select name="customer_id" required>
+        {% for customer in tree.customers %}
+        <option value="{{ customer.id }}">{{ customer.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% else %}
+    <label>Environment
+      <select name="environment_id" required>
+        {% for product in tree.products %}
+          {% for env in product.environments %}
+          <option value="{{ env.id }}">{{ product.name }} / {{ env.name }}</option>
+          {% endfor %}
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <div class="split">
+      <label>Account name <input name="name" required></label>
+      <label>Account ID <input name="account_id" required maxlength="12" inputmode="numeric"></label>
+    </div>
+    <div class="split">
+      <label>Role to assume <input name="role_name" placeholder="Leave blank to scan the connected account"></label>
+      <label>Home region
+        <select name="region">
+          {% for region in regions %}
+          <option value="{{ region.code }}" {% if region.code == 'ap-south-1' %}selected{% endif %}>{{ region.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <button type="submit">Add account</button>
+  </form>
+  {% if tree.accounts %}
+  <table>
+    <thead><tr><th>Name</th><th>Account</th><th>Role</th><th>Region</th><th></th></tr></thead>
+    <tbody>
+      {% for account in tree.accounts %}
+      <tr>
+        <td>{{ account.name }}</td>
+        <td class="mono">{{ account.account_id }}</td>
+        <td class="mono">{{ account.role_name or "Connected identity" }}</td>
+        <td>{{ account.default_region }}</td>
+        <td>
+          <form method="post" action="{{ url_for('scope_delete') }}" onsubmit="return confirm('Remove this account from the console?');">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="hidden" name="table" value="accounts">
+            <input type="hidden" name="id" value="{{ account.id }}">
+            <button class="ghost" type="submit">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No accounts yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
