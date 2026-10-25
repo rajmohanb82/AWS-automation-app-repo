@@ -1,0 +1,87 @@
+name: Application CI and delivery
+on:
+  pull_request:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: 'Production promotion: sha256 digest currently deployed to dev'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: application-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r portal/requirements.txt pytest==8.3.5 pip-audit
+      - run: python -m pytest -q
+      - run: pip-audit -r portal/requirements.txt
+      - run: docker build -t autoapp:ci portal
+      - name: Container security scan
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.69.3 image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed autoapp:ci
+      - name: Runtime smoke test
+        run: |
+          docker run -d --name smoke --tmpfs /app/data:uid=1000,gid=1000 -p 127.0.0.1:5080:5080 autoapp:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5080/healthz; then exit 0; fi
+            sleep 2
+          done
+          docker logs smoke
+          exit 1
+  deliver:
+    if: github.event_name != 'pull_request'
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && 'dev' || 'production' }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DEPLOY_ENV: ${{ github.event_name == 'push' && 'dev' || 'production' }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      INSTANCE_ID: ${{ vars.INSTANCE_ID }}
+      DATA_VOLUME_ID: ${{ vars.DATA_VOLUME_ID }}
+      TARGET_GROUP_ARN: ${{ vars.TARGET_GROUP_ARN }}
+      PROMOTE_DIGEST: ${{ inputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Enforce environment branch
+        run: test "$GITHUB_REF_NAME" = "$DEPLOY_ENV"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
+      - name: Build dev release or validate production promotion
+        run: |
+          if [ "$DEPLOY_ENV" = dev ]; then
+            TAG="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            docker build -t "$ECR_REPOSITORY:$TAG" portal
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.69.3 image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$ECR_REPOSITORY:$TAG"
+            docker push "$ECR_REPOSITORY:$TAG"
+            DIGEST=$(aws ecr describe-images --repository-name autoapp --image-ids imageTag="$TAG" --query 'imageDetails[0].imageDigest' --output text)
+          else
+            [[ "$PROMOTE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+            DEV_DIGEST=$(aws ssm get-parameter --name /autoapp/dev/deployed-digest --query Parameter.Value --output text)
+            test "$DEV_DIGEST" = "$PROMOTE_DIGEST"
+            DIGEST="$PROMOTE_DIGEST"
+            docker pull "$ECR_REPOSITORY@$DIGEST"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.69.3 image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$ECR_REPOSITORY@$DIGEST"
+          fi
+          echo "IMAGE=$ECR_REPOSITORY@$DIGEST" >> "$GITHUB_ENV"
+      - run: pip install -r portal/requirements.txt
+      - run: python scripts/deploy.py

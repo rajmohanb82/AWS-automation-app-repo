@@ -1,10 +1,13 @@
 """Operations console: one app for housekeeping, cost, and governance."""
 
 import json
+import os
 import re
 import secrets
 from datetime import timedelta
 from io import BytesIO
+
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from flask import (
     Flask,
@@ -55,8 +58,12 @@ def create_app():
     db.init_db()
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.secret_key = db.secret_key()
+    if os.environ.get("DEPLOY_ENV") in {"dev", "production"}:
+        # Only the ALB security group can reach this service.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SECURE=os.environ.get("DEPLOY_ENV") in {"dev", "production"},
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
         MAX_CONTENT_LENGTH=2 * 1024 * 1024,

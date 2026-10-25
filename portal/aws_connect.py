@@ -1,3 +1,4 @@
+import os
 """AWS access through a local profile or IAM Identity Center."""
 
 import configparser
@@ -122,6 +123,8 @@ def _sso_access_token(row):
 
 
 def base_session(region):
+    if os.environ.get("AWS_AUTH_MODE") == "instance-role":
+        return boto3.Session(region_name=region)
     row = db.get_connection()
     mode = row.get("mode") or "unset"
     if mode == "profile":

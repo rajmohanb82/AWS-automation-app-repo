@@ -46,3 +46,7 @@ Each scan and remediation writes an integration event (finding id, account, regi
 ## Prior version
 
 `housekeeping-app/`, `cost-optimizer/`, `admin-panel/`, and `auth/` are the previous three-app layout for the earlier organization. This console replaces that layout.
+
+## AWS CI/CD project
+
+See [docs/PROJECT1.md](docs/PROJECT1.md) for the coordinated two-repository deployment project.
