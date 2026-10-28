@@ -1,23 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Overview · {{ org_name }}{% endblock %}
-{% block page %}overview{% endblock %}
+{% block title %}Dashboard · CloudSync{% endblock %}
+{% block page %}dashboard{% endblock %}
 {% block content %}
 <header class="page-head">
   <div>
-    <h1>Overview</h1>
+    <p class="kicker">Console</p>
+    <h1>Dashboard</h1>
     <p class="lede">
       {% if mode == 'msp' %}
-      MSP layout. Choose a customer and account in the header, then run a scan.
+      Choose a customer and account above, then open a work area or a report.
       {% elif cardinality == 'single' %}
-      One product. Choose an environment and account in the header.
+      Choose an environment and account above, then open a work area or a report.
       {% else %}
-      Several products. Choose a product, environment, and account in the header.
+      Choose a product, environment, and account above, then open a work area or a report.
       {% endif %}
     </p>
   </div>
+  <a class="btn" href="{{ url_for('reports_page') }}">Open reports</a>
 </header>
 
-<section class="kpis">
+<section class="kpis kpis-4">
   <article><span>Accounts</span><strong>{{ account_count }}</strong></article>
   {% if mode == 'msp' %}
   <article><span>Customers</span><strong>{{ customer_count }}</strong></article>
@@ -30,6 +32,7 @@
       {% if link.mode == 'profile' %}Profile{% elif link.mode == 'sso' %}Identity Center{% else %}Not set{% endif %}
     </strong>
   </article>
+  <article><span>High findings, latest housekeeping</span><strong>{{ high_open }}</strong></article>
 </section>
 
 {% if link.mode == 'unset' and user.role == 'admin' %}
@@ -45,41 +48,92 @@
 </p>
 {% endif %}
 
+<section class="dash-grid">
+  <article class="card chart-card">
+    <header>
+      <h2>Housekeeping severity</h2>
+      <p class="hint">{{ housekeeping_caption or "No housekeeping scan with a saved severity breakdown yet." }}</p>
+    </header>
+    {% if housekeeping_chart %}
+    {{ housekeeping_chart|safe }}
+    {% else %}
+    <p class="empty">Run a housekeeping scan. This chart uses only the counts stored from that read.</p>
+    {% endif %}
+  </article>
+  <article class="card chart-card">
+    <header>
+      <h2>Governance severity</h2>
+      <p class="hint">{{ governance_caption or "No governance scan with a saved severity breakdown yet." }}</p>
+    </header>
+    {% if governance_chart %}
+    {{ governance_chart|safe }}
+    {% else %}
+    <p class="empty">Run a governance assessment. This chart uses only the counts stored from that read.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="dash-split">
+  <article class="card table-card">
+    <h2>Recent scans</h2>
+    {% if scans %}
+    <table>
+      <thead><tr><th>When</th><th>Kind</th><th>Account</th><th>Region</th><th>Items</th><th>High</th><th>By</th></tr></thead>
+      <tbody>
+        {% for scan in scans %}
+        <tr>
+          <td class="mono">{{ scan.when }}</td>
+          <td>{{ scan.kind }}</td>
+          <td>{{ scan.account_name }}</td>
+          <td>{{ scan.region }}</td>
+          <td class="mono">{{ scan.total }}</td>
+          <td class="mono">{{ scan.high }}</td>
+          <td>{{ scan.actor }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Scans you run will be listed here.</p>
+    {% endif %}
+  </article>
+  <article class="card table-card">
+    <h2>Activity log</h2>
+    {% if logs %}
+    <table>
+      <thead><tr><th>When</th><th>Person</th><th>Action</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="mono">{{ log.when }}</td>
+          <td>{{ log.username }}</td>
+          <td><span class="pill pill-low">{{ log.action }}</span></td>
+          <td>{{ log.detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Sign-in and scan activity will be listed here.</p>
+    {% endif %}
+  </article>
+</section>
+
 <section class="grid-3">
   <a class="card link-card" href="{{ url_for('housekeeping_page') }}">
+    <p class="kicker">Work</p>
     <h2>Housekeeping</h2>
     <p>Security and hygiene findings, with documented actions and admin-only fixes.</p>
   </a>
   <a class="card link-card" href="{{ url_for('cost_page') }}">
+    <p class="kicker">Work</p>
     <h2>Cost</h2>
     <p>Savings from Cost Optimization Hub and Compute Optimizer. List-price inventory is the fallback.</p>
   </a>
   <a class="card link-card" href="{{ url_for('governance_page') }}">
+    <p class="kicker">Work</p>
     <h2>Governance</h2>
     <p>The same evidence grouped into Well-Architected pillars, plus Trusted Advisor when the account's support plan allows it.</p>
   </a>
-</section>
-
-<section class="card">
-  <h2>Recent scans</h2>
-  {% if scans %}
-  <table>
-    <thead><tr><th>When</th><th>Kind</th><th>Account</th><th>Region</th><th>Items</th><th>By</th></tr></thead>
-    <tbody>
-      {% for scan in scans %}
-      <tr>
-        <td>{{ scan.created_at }}</td>
-        <td>{{ scan.kind }}</td>
-        <td>{{ scan.account_name }}</td>
-        <td>{{ scan.region }}</td>
-        <td>{{ scan.summary.total or 0 }}</td>
-        <td>{{ scan.actor }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="empty">Scans you run will be listed here.</p>
-  {% endif %}
 </section>
 {% endblock %}

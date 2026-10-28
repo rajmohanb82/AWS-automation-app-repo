@@ -437,12 +437,134 @@ function initSetup() {
   sync();
 }
 
+function initAuth() {
+  document.querySelectorAll(".theme-switch [data-theme]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const choice = button.dataset.theme;
+      const dark = choice === "dark" || (choice === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      document.documentElement.dataset.themeChoice = choice;
+      localStorage.setItem("portal-theme", choice);
+    });
+  });
+  const reveal = document.querySelector("[data-toggle-password]");
+  reveal?.addEventListener("click", () => {
+    const input = reveal.parentElement.querySelector("input");
+    const visible = input.type === "text";
+    input.type = visible ? "password" : "text";
+    reveal.textContent = visible ? "Show" : "Hide";
+    reveal.setAttribute("aria-label", visible ? "Show password" : "Hide password");
+  });
+  const otp = document.querySelector("[data-otp]");
+  if (!otp) return;
+  const slots = [...otp.querySelectorAll("input")];
+  const hidden = document.querySelector("[data-otp-value]");
+  const sync = () => {
+    if (hidden) hidden.value = slots.map((slot) => slot.value).join("");
+  };
+  const paint = (digits, focusIndex) => {
+    slots.forEach((slot, index) => {
+      slot.value = digits[index] || "";
+    });
+    const target = slots[Math.min(focusIndex, slots.length - 1)];
+    if (target) target.focus();
+    sync();
+  };
+  slots.forEach((slot, index) => {
+    slot.addEventListener("input", () => {
+      const digits = slot.value.replace(/\D/g, "");
+      if (digits.length > 1) {
+        const merged = (slots.slice(0, index).map((item) => item.value).join("") + digits).replace(/\D/g, "").slice(0, slots.length);
+        paint(merged, merged.length);
+        return;
+      }
+      slot.value = digits.slice(-1);
+      if (slot.value && slots[index + 1]) slots[index + 1].focus();
+      sync();
+    });
+    slot.addEventListener("keydown", (event) => {
+      if (event.key === "Backspace" && !slot.value && slots[index - 1]) {
+        slots[index - 1].focus();
+      }
+      if (event.key === "ArrowLeft" && slots[index - 1]) slots[index - 1].focus();
+      if (event.key === "ArrowRight" && slots[index + 1]) slots[index + 1].focus();
+    });
+    slot.addEventListener("paste", (event) => {
+      const text = (event.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, slots.length);
+      if (!text) return;
+      event.preventDefault();
+      paint(text, text.length);
+    });
+  });
+  otp.closest("form")?.addEventListener("submit", (event) => {
+    sync();
+    if (!hidden || hidden.value.length < 6) {
+      event.preventDefault();
+      slots[0].focus();
+    }
+  });
+}
+
+function initReports() {
+  const library = document.getElementById("report-library");
+  if (!library) return;
+  const filters = document.getElementById("report-filters");
+  filters?.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-domain-filter]");
+    if (!chip) return;
+    const domain = chip.dataset.domainFilter;
+    filters.querySelectorAll(".chip").forEach((item) => {
+      item.setAttribute("aria-pressed", item === chip ? "true" : "false");
+    });
+    library.querySelectorAll("[data-domain]").forEach((section) => {
+      section.hidden = domain !== "all" && section.dataset.domain !== domain;
+    });
+  });
+  library.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-report]");
+    if (!button) return;
+    const buttons = [...library.querySelectorAll("[data-report]")];
+    const label = button.textContent;
+    buttons.forEach((item) => { item.disabled = true; });
+    button.textContent = "Preparing PDF…";
+    setStatus("Reading the selected account and building the report. This can take a minute.");
+    try {
+      const response = await fetch(`/api/reports/${button.dataset.report}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": window.CSRF },
+        body: JSON.stringify(requireScope()),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "The report could not be created.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
+      const filename = decodeURIComponent((match && (match[1] || match[2])) || `${button.dataset.report}.pdf`);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      setStatus("Report downloaded.");
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      buttons.forEach((item) => { item.disabled = false; });
+      button.textContent = label;
+    }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const page = document.body.dataset.page;
   initScope();
   initSetup();
+  initAuth();
   if (page === "housekeeping") initHousekeeping();
   if (page === "cost") initCost();
   if (page === "governance") initGovernance();
+  if (page === "reports") initReports();
   if (page === "settings") initSettings();
 });

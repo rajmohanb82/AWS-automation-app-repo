@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{% if step == 1 %}Sign in{% else %}Authenticator{% endif %} · CloudSync{% endblock %}
+{% block page %}auth{% endblock %}
+{% block content %}
+<div class="portal-login">
+  <section class="portal-hero">
+    <div class="hero-frame">
+      <img class="scene scene-light" src="{{ url_for('static', filename='login-hero-light.jpg') }}" alt="Cloud platform with compute, storage, databases, networking, and security">
+      <img class="scene scene-dark" src="{{ url_for('static', filename='login-hero-dark.jpg') }}" alt="">
+      <div class="portal-brand">
+        <img src="{{ url_for('static', filename='vayu-logo.png') }}" alt="Vayu Technologies">
+      </div>
+      <img class="cloud-badge" src="{{ url_for('static', filename='cloudsync-logo.png') }}" alt="CloudSync">
+    </div>
+  </section>
+
+  <section class="portal-panel">
+    <div class="theme-switch" role="group" aria-label="Color theme">
+      <button type="button" data-theme="light">Light</button>
+      <button type="button" data-theme="dark">Dark</button>
+      <button type="button" data-theme="system">System</button>
+    </div>
+    <div class="portal-card">
+      <p class="step-line">{% if step == 1 %}Step 1 of 2 · Credentials{% else %}Step 2 of 2 · Authenticator{% endif %}</p>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <p class="flash flash-{{ category }}" role="status">{{ message }}</p>
+        {% endfor %}
+      {% endwith %}
+
+      {% if mode == 'password' %}
+      <h2>Welcome back</h2>
+      <p class="card-lede">Sign in to CloudSync.</p>
+      <form class="stack" method="post" action="{{ url_for('login') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Username
+          <input name="username" autocomplete="username" required value="{{ username or '' }}" placeholder="Username" autofocus>
+        </label>
+        <label>Password
+          <span class="password-row">
+            <input name="password" type="password" autocomplete="current-password" required placeholder="Enter your password">
+            <button type="button" class="ghost-eye" data-toggle-password aria-label="Show password">Show</button>
+          </span>
+        </label>
+        <button type="submit" class="auth-wide accent-btn">Sign in</button>
+      </form>
+      {% if oidc and oidc.enabled %}
+      <p class="auth-or"><span>or</span></p>
+      <a class="btn secondary auth-wide" href="{{ url_for('oidc_start') }}">Continue with {{ oidc.label or 'identity provider' }}</a>
+      {% endif %}
+
+      {% elif mode == 'enroll' %}
+      <h2>Register an authenticator</h2>
+      <p class="card-lede">Scan the code, then confirm this device. The next sign-in will ask for a code.</p>
+      <p class="signed-as">Signing in as <strong>{{ user.username }}</strong></p>
+      <div class="qr">{{ svg|safe }}</div>
+      <p class="setup-pin">Setup PIN <code>{{ pin }}</code></p>
+      <form class="stack" method="post">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="auth-wide accent-btn">I have added this device</button>
+      </form>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="text-btn">Use a different account</button>
+      </form>
+
+      {% else %}
+      <h2>Authenticator code</h2>
+      <p class="card-lede">Enter the current 6-digit code from the app registered to this account.</p>
+      <p class="signed-as">Signing in as <strong>{{ user.username }}</strong></p>
+      <form class="stack" method="post" id="otp-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="code" data-otp-value>
+        <div class="otp" data-otp>
+          {% for n in range(1, 7) %}
+          <input inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="Digit {{ n }} of 6" {% if n == 1 %}autofocus{% endif %}>
+          {% endfor %}
+        </div>
+        <button type="submit" class="auth-wide accent-btn">Verify and enter</button>
+      </form>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="text-btn">Use a different account</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

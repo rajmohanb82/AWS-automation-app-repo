@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Housekeeping · {{ org_name }}{% endblock %}
+{% block title %}Housekeeping · CloudSync{% endblock %}
 {% block page %}housekeeping{% endblock %}
 {% block content %}
 <header class="page-head">
@@ -10,6 +10,7 @@
   <div class="actions">
     <button type="button" id="scan-btn">Scan account</button>
     <button type="button" class="secondary" id="pdf-btn">Download PDF</button>
+    <a class="btn secondary" href="{{ url_for('reports_page') }}">Report library</a>
   </div>
 </header>
 <div id="work-status" class="note" hidden></div>

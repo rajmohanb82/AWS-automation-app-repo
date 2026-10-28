@@ -4,7 +4,7 @@ services:
       context: ./portal
     image: operations-console
     ports:
-      - "127.0.0.1:5080:5080"
+      - "5080:5080"
     environment:
       HOST: 0.0.0.0
       PORT: "5080"

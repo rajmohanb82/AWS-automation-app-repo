@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Reports · CloudSync{% endblock %}
+{% block page %}reports{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <p class="kicker">Library</p>
+    <h1>Reports</h1>
+    <p class="lede">Choose a format for the account and region in the header. Each export reads that account, then downloads a PDF. Housekeeping fixes are not part of a report.</p>
+  </div>
+</header>
+
+<div class="filters" id="report-filters">
+  <button type="button" class="chip" data-domain-filter="all" aria-pressed="true">All</button>
+  <button type="button" class="chip" data-domain-filter="housekeeping" aria-pressed="false">Housekeeping</button>
+  <button type="button" class="chip" data-domain-filter="governance" aria-pressed="false">Governance</button>
+  <button type="button" class="chip" data-domain-filter="cost" aria-pressed="false">Cost optimization</button>
+</div>
+<div id="work-status" class="note" hidden></div>
+
+<div id="report-library" class="library">
+  {% for group in groups %}
+  <section class="domain" data-domain="{{ group.id }}">
+    <header class="domain-head">
+      <div>
+        <p class="kicker">{{ group.label }}</p>
+        <h2>{{ group.headline }}</h2>
+        <p class="lede">{{ group.blurb }}</p>
+      </div>
+      <p class="hint">{{ group.reports|length }} reports</p>
+    </header>
+    <div class="insight">
+      <article class="card chart-card">
+        <h3>Breakdown</h3>
+        <p class="hint">{{ group.visual.caption }}</p>
+        {% if group.visual.chart %}
+        {{ group.visual.chart|safe }}
+        {% elif group.visual.rows %}
+        <p class="empty">This read did not include a severity or pillar mix to chart.</p>
+        {% else %}
+        <p class="empty">Generate a report below. The next read will draw this graph from the stored breakdown.</p>
+        {% endif %}
+      </article>
+      <article class="card table-card">
+        <h3>Recent reads</h3>
+        {% if group.visual.rows %}
+        <table>
+          <thead><tr><th>When</th><th>Account</th><th>Region</th><th>Items</th><th>High</th><th>By</th></tr></thead>
+          <tbody>
+            {% for scan in group.visual.rows %}
+            <tr>
+              <td class="mono">{{ scan.when }}</td>
+              <td>{{ scan.account_name }}</td>
+              <td>{{ scan.region }}</td>
+              <td class="mono">{{ scan.total }}</td>
+              <td class="mono">{{ scan.high }}</td>
+              <td>{{ scan.actor }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty">No stored reads for this topic yet.</p>
+        {% endif %}
+      </article>
+    </div>
+    <div class="report-grid">
+      {% for report in group.reports %}
+      <article class="card report-card">
+        <header>
+          <span class="code">{{ report.code }}</span>
+          <span class="audience">{{ report.audience }}</span>
+        </header>
+        <h3>{{ report.title }}</h3>
+        <p>{{ report.summary }}</p>
+        <p class="hint">{{ report.reads }}</p>
+        <button type="button" data-report="{{ report.id }}">Generate PDF</button>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

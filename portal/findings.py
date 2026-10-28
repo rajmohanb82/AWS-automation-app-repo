@@ -102,10 +102,16 @@ def decorate_finding(finding, account_id, region):
 
 def record_scan(kind, account, region, actor, findings):
     counts = {}
+    pillars = {}
     ids = []
+    saving = 0.0
     for finding in findings:
         severity = finding.get("severity") or finding.get("priority") or "INFO"
         counts[severity] = counts.get(severity, 0) + 1
+        pillar = finding.get("pillar")
+        if pillar:
+            pillars[pillar] = pillars.get(pillar, 0) + 1
+        saving += float(finding.get("monthly_saving") or 0)
         if finding.get("finding_id"):
             ids.append(finding["finding_id"])
     summary = {
@@ -115,6 +121,10 @@ def record_scan(kind, account, region, actor, findings):
         "account_name": account["name"],
         "region": region,
     }
+    if pillars:
+        summary["pillars"] = pillars
+    if saving:
+        summary["monthly_saving"] = round(saving, 2)
     db.add_scan(kind, account["account_id"], account["name"], region, actor, json.dumps(summary))
     db.add_event(
         "scan.completed",

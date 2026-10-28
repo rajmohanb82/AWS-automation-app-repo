@@ -4,43 +4,73 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ org_name }}{% endblock %}</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f6e6b'/%3E%3C/svg%3E">
+  <link rel="icon" href="{{ url_for('static', filename='cloudsync-logo.png') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script>
+    (function () {
+      try {
+        var choice = localStorage.getItem("portal-theme") || "system";
+        var dark = choice === "dark" || (choice === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        document.documentElement.dataset.themeChoice = choice;
+        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
+          var stored = localStorage.getItem("portal-theme") || "system";
+          if (stored !== "system") return;
+          document.documentElement.dataset.theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        });
+      } catch (error) {}
+    })();
+  </script>
 </head>
 {% set signed_in = user and (session.get('auth_method') == 'oidc' or session.get('mfa_verified')) %}
 <body class="{% if signed_in %}app{% else %}gate{% endif %}" data-page="{% block page %}{{ request.endpoint }}{% endblock %}">
   {% if signed_in %}
   <aside class="nav">
     <a class="brand" href="{{ url_for('overview') }}">
-      <span class="mark">{{ org_name[:1]|upper }}</span>
-      <span>
-        <strong>{{ org_name }}</strong>
-        <small>Operations console</small>
-      </span>
+      <img class="app-logo" src="{{ url_for('static', filename='cloudsync-logo.png') }}" alt="CloudSync">
     </a>
     <nav>
-      <a href="{{ url_for('overview') }}" {% if request.endpoint == 'overview' %}aria-current="page"{% endif %}>Overview</a>
+      <p class="nav-label">Work</p>
+      <a href="{{ url_for('overview') }}" {% if request.endpoint == 'overview' %}aria-current="page"{% endif %}>Dashboard</a>
       <a href="{{ url_for('housekeeping_page') }}" {% if request.endpoint == 'housekeeping_page' %}aria-current="page"{% endif %}>Housekeeping</a>
       <a href="{{ url_for('cost_page') }}" {% if request.endpoint == 'cost_page' %}aria-current="page"{% endif %}>Cost</a>
       <a href="{{ url_for('governance_page') }}" {% if request.endpoint == 'governance_page' %}aria-current="page"{% endif %}>Governance</a>
+      <a href="{{ url_for('reports_page') }}" {% if request.endpoint == 'reports_page' %}aria-current="page"{% endif %}>Reports</a>
       {% if user.role == 'admin' %}
+      <p class="nav-label">Administration</p>
       <a href="{{ url_for('scope_page') }}" {% if request.endpoint == 'scope_page' %}aria-current="page"{% endif %}>Scope</a>
       <a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}aria-current="page"{% endif %}>Settings</a>
       <a href="{{ url_for('people') }}" {% if request.endpoint == 'people' %}aria-current="page"{% endif %}>People</a>
       <a href="{{ url_for('audit') }}" {% if request.endpoint == 'audit' %}aria-current="page"{% endif %}>Audit</a>
       {% endif %}
     </nav>
-    <form class="signout" method="post" action="{{ url_for('logout') }}">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button type="submit">Sign out {{ user.username }}</button>
-    </form>
+    <div class="nav-foot">
+      <img class="company-logo" src="{{ url_for('static', filename='vayu-logo.png') }}" alt="Vayu Technologies">
+      <div class="nav-user">
+        <span class="avatar">{{ user.username[:1]|upper }}</span>
+        <span>
+          <strong>{{ user.username }}</strong>
+          <small>{{ user.role }}</small>
+        </span>
+      </div>
+      <form class="signout" method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">Sign out</button>
+      </form>
+    </div>
   </aside>
   {% endif %}
   <div class="workspace">
     {% if signed_in %}
     <header class="topbar">
+      <p class="scope-label">Working scope</p>
+      <div class="theme-switch" role="group" aria-label="Color theme">
+        <button type="button" data-theme="light">Light</button>
+        <button type="button" data-theme="dark">Dark</button>
+        <button type="button" data-theme="system">System</button>
+      </div>
       <div class="scopebar" id="scopebar">
         {% if mode == 'msp' %}
         <label>Customer <select id="sel-customer"></select></label>
@@ -53,15 +83,16 @@
         <label>Account <select id="sel-account"></select></label>
         <label>Region <select id="sel-region"></select></label>
       </div>
-      <p class="who">{{ user.role }}</p>
     </header>
     {% endif %}
     <main>
+      {% if request.endpoint not in ['login', 'mfa_verify', 'mfa_setup'] %}
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}
           <p class="flash flash-{{ category }}" role="status">{{ message }}</p>
         {% endfor %}
       {% endwith %}
+      {% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>

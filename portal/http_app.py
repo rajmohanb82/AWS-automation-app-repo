@@ -3,7 +3,7 @@
 import json
 import re
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
 from flask import (
@@ -21,8 +21,10 @@ from flask import (
 
 import advisor
 import aws_connect
+import charts
 import db
 import pdf_report
+import report_catalog
 from aws_connect import REGIONS, REGION_CODES, AwsLinkError
 from engine.checks import run_all_checks
 from engine.remediate import dispatch_remediation
@@ -36,6 +38,11 @@ OPEN_PATHS = {
     "/mfa-verify",
     "/auth/oidc/start",
     "/auth/oidc/callback",
+    "/api/mobile/bootstrap",
+    "/api/mobile/login",
+    "/api/mobile/mfa/verify",
+    "/api/mobile/mfa/enroll",
+    "/api/mobile/logout",
 }
 ADMIN_PREFIXES = (
     "/settings",
@@ -96,6 +103,8 @@ def create_app():
             return None
         user = _current_user()
         if not user:
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Sign in again."}), 401
             return redirect(url_for("login", next=request.path))
         if session.get("auth_method") != "oidc" and not session.get("mfa_verified"):
             if request.path.startswith("/api/"):
@@ -115,20 +124,45 @@ def create_app():
     @app.get("/")
     def overview():
         tree = db.scope_tree()
-        scans = []
-        for row in db.recent_scans():
-            try:
-                summary = json.loads(row["summary_json"] or "{}")
-            except json.JSONDecodeError:
-                summary = {}
-            scans.append({**row, "summary": summary})
+        user = _current_user()
+        scans = _load_scans(24)
+        logs = []
+        for row in db.get_audit_logs(limit=20):
+            if user and user["role"] != "admin" and row["username"] != user["username"]:
+                continue
+            logs.append(
+                {
+                    "when": charts.when(row["timestamp"]),
+                    "username": row["username"],
+                    "action": row["action"],
+                    "detail": (row["detail"] or "")[:96],
+                }
+            )
+            if len(logs) >= 8:
+                break
         link = aws_connect.connection_status()
+        housekeeping_chart, housekeeping_caption = charts.factual_mix(scans, {"housekeeping"})
+        governance_chart, governance_caption = charts.factual_mix(scans, {"governance"})
+        high_open = 0
+        for row in scans:
+            if row["kind"] != "housekeeping":
+                continue
+            counts = row["summary"].get("counts") or {}
+            if counts:
+                high_open = int(counts.get("HIGH") or 0)
+                break
         return render_template(
             "overview.html",
-            scans=scans,
+            scans=scans[:8],
+            logs=logs,
+            housekeeping_chart=housekeeping_chart,
+            housekeeping_caption=housekeeping_caption,
+            governance_chart=governance_chart,
+            governance_caption=governance_caption,
             account_count=len(tree["accounts"]),
             customer_count=len(tree["customers"]),
             product_count=len(tree["products"]),
+            high_open=high_open,
             link=link,
         )
 
@@ -143,6 +177,14 @@ def create_app():
     @app.get("/governance")
     def governance_page():
         return render_template("governance.html")
+
+    @app.get("/reports")
+    def reports_page():
+        scans = _load_scans(40)
+        groups = report_catalog.catalog_groups()
+        for group in groups:
+            group["visual"] = charts.topic_visual(group["id"], scans)
+        return render_template("reports.html", groups=groups)
 
     @app.route("/setup", methods=["GET", "POST"])
     def setup_mode():
@@ -232,7 +274,7 @@ def create_app():
             if db.is_account_locked(username):
                 flash("This account is locked for 15 minutes after repeated failures.", "error")
                 db.add_audit(username, "LOGIN_BLOCKED", "Account locked", request.remote_addr)
-                return render_template("login.html", oidc=oidc)
+                return _render_auth("password", oidc=oidc, username=username)
             user = db.get_user(username)
             if not user or not user["password_hash"] or not db.verify_password(password, user["password_hash"]):
                 if user and not user["password_hash"]:
@@ -242,14 +284,14 @@ def create_app():
                         db.increment_failed_attempts(username)
                         db.add_audit(username, "LOGIN_FAILED", "Wrong password", request.remote_addr)
                     flash("The username or password is incorrect.", "error")
-                return render_template("login.html", oidc=oidc)
+                return _render_auth("password", oidc=oidc, username=username)
             if not user["is_active"]:
                 flash("This account is disabled. Ask an administrator to enable it.", "error")
-                return render_template("login.html", oidc=oidc)
+                return _render_auth("password", oidc=oidc, username=username)
             _start_session(user, "local")
             db.add_audit(username, "PASSWORD_OK", "Password verified", request.remote_addr)
             return redirect(url_for("mfa_verify" if user["mfa_enrolled"] else "mfa_setup"))
-        return render_template("login.html", oidc=oidc)
+        return _render_auth("password", oidc=oidc)
 
     @app.route("/mfa-setup", methods=["GET", "POST"])
     def mfa_setup():
@@ -278,7 +320,7 @@ def create_app():
             db.update_last_login(user["username"])
             db.add_audit(user["username"], "MFA_ENROLLED", "Authenticator enrolled from QR", request.remote_addr)
             return redirect(_safe_next(request.args.get("next")))
-        return render_template("mfa_setup.html", svg=svg, pin=pin)
+        return _render_auth("enroll", svg=svg, pin=pin)
 
     @app.route("/mfa-verify", methods=["GET", "POST"])
     def mfa_verify():
@@ -299,7 +341,7 @@ def create_app():
             db.increment_failed_attempts(user["username"])
             db.add_audit(user["username"], "MFA_FAILED", "Invalid authenticator code", request.remote_addr)
             flash("That code was not accepted.", "error")
-        return render_template("mfa.html")
+        return _render_auth("verify")
 
     @app.post("/logout")
     def logout():
@@ -803,6 +845,446 @@ def create_app():
             {"findings": findings, "pillars": pillars, "trusted_advisor": trusted, "summary": summary}
         )
 
+    @app.post("/api/reports/<report_id>")
+    def api_report(report_id):
+        spec = report_catalog.get_report(report_id)
+        if not spec:
+            return jsonify({"error": "That report is not in the library."}), 404
+        try:
+            account, region, aws = _open_account()
+            ctx = _collect_report(spec, account, region, aws)
+            document = report_catalog.build_document(spec, ctx)
+            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            document["subtitle"] = f"{account['name']} ({account['account_id']})   |   {region}   |   {stamp}"
+            payload = pdf_report.render_document(
+                document,
+                org=db.get_setting("org_name") or "Operations",
+            )
+        except (AwsLinkError, PortalError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            app.logger.exception("report failed")
+            return jsonify({"error": str(exc)}), 500
+        db.add_audit(
+            session.get("username"),
+            "REPORT",
+            f"{report_id} {account['account_id']} {region}",
+            request.remote_addr,
+        )
+        slug = re.sub(r"[^a-z0-9]+", "-", spec["title"].lower()).strip("-")
+        return send_file(
+            BytesIO(payload),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"{spec['domain']}-{slug}.pdf",
+        )
+
+    @app.get("/api/mobile/bootstrap")
+    def mobile_bootstrap():
+        return jsonify({
+            "csrf": _ensure_csrf(),
+            "app": "CloudSync",
+            "company": "Vayu Technologies",
+            "org_name": db.get_setting("org_name") or "Operations",
+        })
+
+    @app.post("/api/mobile/login")
+    def mobile_login():
+        body = request.get_json(silent=True) or {}
+        username = (body.get("username") or "").strip()
+        password = body.get("password") or ""
+        if db.is_account_locked(username):
+            db.add_audit(username, "LOGIN_BLOCKED", "Account locked", request.remote_addr)
+            return jsonify({"error": "This account is locked for 15 minutes after repeated failures."}), 401
+        user = db.get_user(username)
+        if not user or not user["password_hash"] or not db.verify_password(password, user["password_hash"]):
+            if user and user["password_hash"]:
+                db.increment_failed_attempts(username)
+                db.add_audit(username, "LOGIN_FAILED", "Wrong password", request.remote_addr)
+            message = (
+                "This account signs in with the identity provider."
+                if user and not user["password_hash"]
+                else "The username or password is incorrect."
+            )
+            return jsonify({"error": message}), 401
+        if not user["is_active"]:
+            return jsonify({"error": "This account is disabled. Ask an administrator to enable it."}), 401
+        _start_session(user, "local")
+        db.add_audit(username, "PASSWORD_OK", "Password verified", request.remote_addr)
+        return jsonify({
+            "step": "verify" if user["mfa_enrolled"] else "enroll",
+            "username": user["username"],
+            "csrf": session.get("csrf"),
+        })
+
+    @app.post("/api/mobile/mfa/verify")
+    def mobile_mfa_verify():
+        user = _current_user()
+        if not user or session.get("auth_method") == "oidc":
+            return jsonify({"error": "Sign in again."}), 401
+        if not user.get("totp_secret") or not user.get("mfa_enrolled"):
+            return jsonify({"error": "Register an authenticator first.", "step": "enroll"}), 409
+        import pyotp
+
+        body = request.get_json(silent=True) or {}
+        code = (body.get("code") or "").strip().replace(" ", "")
+        if not pyotp.TOTP(user["totp_secret"]).verify(code, valid_window=1):
+            db.increment_failed_attempts(user["username"])
+            db.add_audit(user["username"], "MFA_FAILED", "Invalid authenticator code", request.remote_addr)
+            return jsonify({"error": "That code was not accepted."}), 401
+        session["mfa_verified"] = True
+        db.update_last_login(user["username"])
+        db.add_audit(user["username"], "LOGIN_SUCCESS", "MFA verified", request.remote_addr)
+        return jsonify({"ok": True, "csrf": session.get("csrf")})
+
+    @app.route("/api/mobile/mfa/enroll", methods=["GET", "POST"])
+    def mobile_mfa_enroll():
+        user = _current_user()
+        if not user or session.get("auth_method") == "oidc":
+            return jsonify({"error": "Sign in again."}), 401
+        import pyotp
+
+        secret = user.get("totp_secret")
+        if not secret:
+            secret = pyotp.random_base32()
+            db.update_user_mfa(user["username"], secret, False)
+            user = db.get_user(user["username"])
+            secret = user["totp_secret"]
+        if request.method == "POST":
+            db.update_user_mfa(user["username"], secret, True)
+            session["mfa_verified"] = True
+            db.update_last_login(user["username"])
+            db.add_audit(user["username"], "MFA_ENROLLED", "Authenticator enrolled from the Android app", request.remote_addr)
+            return jsonify({"ok": True, "csrf": session.get("csrf")})
+        issuer = db.get_setting("org_name") or "CloudSync"
+        uri = pyotp.TOTP(secret).provisioning_uri(name=user["username"], issuer_name=issuer)
+        pin = " ".join(secret[i:i + 4] for i in range(0, len(secret), 4))
+        return jsonify({"username": user["username"], "pin": pin, "uri": uri, "csrf": session.get("csrf")})
+
+    @app.post("/api/mobile/logout")
+    def mobile_logout():
+        username = session.get("username", "")
+        if username:
+            db.add_audit(username, "LOGOUT", "", request.remote_addr or "")
+        session.clear()
+        return jsonify({"ok": True})
+
+    @app.get("/api/mobile/home")
+    def mobile_home():
+        tree = db.scope_tree()
+        user = _current_user()
+        scans = _load_scans(24)
+        logs = []
+        for row in db.get_audit_logs(limit=20):
+            if user and user["role"] != "admin" and row["username"] != user["username"]:
+                continue
+            logs.append({
+                "when": charts.when(row["timestamp"]),
+                "username": row["username"],
+                "action": row["action"],
+                "detail": (row["detail"] or "")[:96],
+            })
+            if len(logs) >= 8:
+                break
+        link = aws_connect.connection_status()
+        aws_label = {"profile": "Profile", "sso": "Identity Center"}.get(link.get("mode"), "Not set")
+        high_open = 0
+        for row in scans:
+            if row["kind"] != "housekeeping":
+                continue
+            counts = (row.get("summary") or {}).get("counts") or {}
+            if counts:
+                high_open = int(counts.get("HIGH") or 0)
+                break
+
+        def pack(kinds):
+            series, caption = charts.factual_points(scans, kinds)
+            return {
+                "caption": caption,
+                "series": [
+                    {"label": item["label"], "value": item["value"], "tone": item["tone"]}
+                    for item in series
+                ],
+            }
+
+        groups = []
+        for group in report_catalog.catalog_groups():
+            groups.append({
+                "id": group["id"],
+                "label": group["label"],
+                "headline": group["headline"],
+                "blurb": group["blurb"],
+                "reports": [
+                    {
+                        "id": item["id"],
+                        "code": item["code"],
+                        "title": item["title"],
+                        "audience": item["audience"],
+                        "summary": item["summary"],
+                    }
+                    for item in group["reports"]
+                ],
+            })
+        return jsonify({
+            "user": {"username": user["username"], "role": user["role"]},
+            "org_name": db.get_setting("org_name") or "Operations",
+            "mode": db.get_setting("operating_mode") or "product",
+            "account_count": len(tree["accounts"]),
+            "product_count": len(tree["products"]),
+            "customer_count": len(tree["customers"]),
+            "aws": aws_label,
+            "high_open": high_open,
+            "housekeeping": pack({"housekeeping"}),
+            "governance": pack({"governance"}),
+            "cost": pack({"cost", "cost-inventory"}),
+            "scans": [_scan_brief(row) for row in scans[:8]],
+            "logs": logs,
+            "accounts": [
+                {
+                    "id": item["id"],
+                    "name": item["name"],
+                    "account_id": item["account_id"],
+                    "region": item["default_region"],
+                }
+                for item in tree["accounts"]
+            ],
+            "reports": groups,
+        })
+
+    @app.post("/api/mobile/reports/<report_id>")
+    def mobile_report(report_id):
+        spec = report_catalog.get_report(report_id)
+        if not spec:
+            return jsonify({"error": "That report is not in the library."}), 404
+        try:
+            account, region, aws = _open_account()
+            ctx = _collect_report(spec, account, region, aws)
+            document = report_catalog.build_document(spec, ctx)
+            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            document["subtitle"] = f"{account['name']} ({account['account_id']})   |   {region}   |   {stamp}"
+            payload = _mobile_document(document)
+        except (AwsLinkError, PortalError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            app.logger.exception("mobile report failed")
+            return jsonify({"error": str(exc)}), 500
+        db.add_audit(
+            session.get("username"),
+            "REPORT",
+            f"{report_id} {account['account_id']} {region}",
+            request.remote_addr,
+        )
+        return jsonify(payload)
+
+    @app.post("/api/mobile/reports/<report_id>/pdf")
+    def mobile_report_pdf(report_id):
+        spec = report_catalog.get_report(report_id)
+        if not spec:
+            return jsonify({"error": "That report is not in the library."}), 404
+        try:
+            account, region, aws = _open_account()
+            ctx = _collect_report(spec, account, region, aws)
+            document = report_catalog.build_document(spec, ctx)
+            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            document["subtitle"] = f"{account['name']} ({account['account_id']})   |   {region}   |   {stamp}"
+            payload = pdf_report.render_document(
+                document,
+                org=db.get_setting("org_name") or "Operations",
+            )
+        except (AwsLinkError, PortalError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            app.logger.exception("mobile report pdf failed")
+            return jsonify({"error": str(exc)}), 500
+        db.add_audit(
+            session.get("username"),
+            "REPORT",
+            f"{report_id} pdf {account['account_id']} {region}",
+            request.remote_addr,
+        )
+        slug = re.sub(r"[^a-z0-9]+", "-", spec["title"].lower()).strip("-")
+        return send_file(
+            BytesIO(payload),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"{spec['domain']}-{slug}.pdf",
+        )
+
+    @app.get("/api/mobile/settings")
+    def mobile_settings():
+        denied = _admin_json()
+        if denied:
+            return denied
+        link = aws_connect.connection_status()
+        return jsonify({
+            "mode": db.get_setting("operating_mode") or "msp",
+            "cardinality": db.get_setting("product_cardinality") or "single",
+            "connection": link,
+            "profiles": aws_connect.list_profiles(),
+            "regions": REGIONS,
+        })
+
+    @app.post("/api/mobile/settings/aws")
+    def mobile_settings_aws():
+        denied = _admin_json()
+        if denied:
+            return denied
+        body = request.get_json(silent=True) or {}
+        mode = body.get("mode") or "unset"
+        if mode not in {"profile", "sso", "unset"}:
+            mode = "unset"
+        sso_region = body.get("sso_region") or "us-east-1"
+        if sso_region not in REGION_CODES:
+            sso_region = "us-east-1"
+        db.save_connection(
+            mode,
+            body.get("profile_name") or "",
+            body.get("sso_start_url") or "",
+            sso_region,
+            body.get("sso_account_id") or "",
+            body.get("sso_role_name") or "",
+        )
+        db.add_audit(session.get("username"), "AWS_CONNECTION_SAVED", mode, request.remote_addr)
+        return jsonify({"ok": True, "connection": aws_connect.connection_status()})
+
+    @app.post("/api/mobile/aws/test")
+    def mobile_aws_test():
+        denied = _admin_json()
+        if denied:
+            return denied
+        data = request.get_json(silent=True) or {}
+        if data.get("mode") in {"profile", "sso"}:
+            sso_region = data.get("sso_region") if data.get("sso_region") in REGION_CODES else "us-east-1"
+            db.save_connection(
+                data["mode"],
+                data.get("profile_name") or "",
+                data.get("sso_start_url") or "",
+                sso_region,
+                data.get("sso_account_id") or "",
+                data.get("sso_role_name") or "",
+            )
+        region = data.get("region") if data.get("region") in REGION_CODES else "us-east-1"
+        try:
+            account_pk = _maybe_int(data.get("account_pk"))
+            if account_pk:
+                account = db.get_account(account_pk)
+                if not account:
+                    raise AwsLinkError("Choose an account.")
+                result = aws_connect.test_account(account, region)
+            else:
+                result = aws_connect.test_base(region)
+        except AwsLinkError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"status": "connected", **result})
+
+    @app.post("/api/mobile/aws/sso/start")
+    def mobile_sso_start():
+        denied = _admin_json()
+        if denied:
+            return denied
+        data = request.get_json(silent=True) or {}
+        try:
+            result = aws_connect.start_sso_device(
+                (data.get("sso_start_url") or "").strip(),
+                (data.get("sso_region") or "").strip(),
+                (data.get("sso_account_id") or "").strip(),
+                (data.get("sso_role_name") or "").strip(),
+            )
+        except AwsLinkError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify(result)
+
+    @app.post("/api/mobile/aws/sso/poll")
+    def mobile_sso_poll():
+        denied = _admin_json()
+        if denied:
+            return denied
+        try:
+            return jsonify(aws_connect.poll_sso_device())
+        except AwsLinkError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/mobile/scope")
+    def mobile_scope():
+        denied = _admin_json()
+        if denied:
+            return denied
+        return jsonify(_scope_payload())
+
+    @app.post("/api/mobile/scope/accounts")
+    def mobile_scope_account():
+        denied = _admin_json()
+        if denied:
+            return denied
+        error = _create_account_from_json(request.get_json(silent=True) or {})
+        if error:
+            return jsonify({"error": error}), 400
+        db.add_audit(session.get("username"), "ACCOUNT_ADDED", "", request.remote_addr)
+        return jsonify(_scope_payload())
+
+    @app.post("/api/mobile/scope/delete")
+    def mobile_scope_delete():
+        denied = _admin_json()
+        if denied:
+            return denied
+        body = request.get_json(silent=True) or {}
+        table = body.get("table")
+        row_id = _maybe_int(body.get("id"))
+        if table not in {"customers", "products", "environments", "accounts"} or not row_id:
+            return jsonify({"error": "Choose what to remove."}), 400
+        db.delete_row(table, row_id)
+        db.add_audit(session.get("username"), "SCOPE_DELETED", f"{table}:{row_id}", request.remote_addr)
+        return jsonify(_scope_payload())
+
+    @app.get("/api/mobile/people")
+    def mobile_people():
+        denied = _admin_json()
+        if denied:
+            return denied
+        people = []
+        for row in db.get_all_users():
+            people.append({
+                "username": row["username"],
+                "email": row["email"] or "",
+                "role": row["role"],
+                "active": bool(row["is_active"]),
+                "mfa": bool(row["mfa_enrolled"]),
+                "last_login": row["last_login"] or "",
+            })
+        return jsonify({"people": people})
+
+    @app.post("/api/mobile/people")
+    def mobile_people_create():
+        denied = _admin_json()
+        if denied:
+            return denied
+        body = request.get_json(silent=True) or {}
+        username = _clean_username(body.get("username"))
+        email = (body.get("email") or "").strip()
+        password = body.get("password") or ""
+        role = body.get("role") if body.get("role") in {"admin", "viewer"} else "viewer"
+        if not username or "@" not in email or len(password) < 8:
+            return jsonify({"error": "Enter a username, email, and a password of at least 8 characters."}), 400
+        if not db.create_user(username, email, db.hash_password(password), role):
+            return jsonify({"error": "That username already exists."}), 400
+        db.add_audit(session.get("username"), "USER_CREATED", username, request.remote_addr)
+        return jsonify({"ok": True, "username": username})
+
+    @app.get("/api/mobile/audit")
+    def mobile_audit():
+        denied = _admin_json()
+        if denied:
+            return denied
+        logs = []
+        for row in db.get_audit_logs(limit=40):
+            logs.append({
+                "when": charts.when(row["timestamp"]),
+                "username": row["username"] or "",
+                "action": row["action"] or "",
+                "detail": (row["detail"] or "")[:120],
+            })
+        return jsonify({"logs": logs})
+
     return app
 
 
@@ -1039,6 +1521,85 @@ def _product_exists(product_id):
     return any(product["id"] == product_id for product in db.list_products())
 
 
+def _admin_json():
+    user = _current_user()
+    if not user or user["role"] != "admin":
+        return jsonify({"error": "Administrator access is required."}), 403
+    return None
+
+
+def _scope_payload():
+    tree = db.scope_tree()
+    environments = []
+    products = []
+    for product in tree["products"]:
+        products.append({"id": product["id"], "name": product["name"]})
+        for env in product["environments"]:
+            environments.append({
+                "id": env["id"],
+                "name": env["name"],
+                "product": product["name"],
+                "product_id": product["id"],
+            })
+    return {
+        "mode": db.get_setting("operating_mode") or "msp",
+        "cardinality": db.get_setting("product_cardinality") or "single",
+        "regions": REGIONS,
+        "customers": [{"id": item["id"], "name": item["name"]} for item in tree["customers"]],
+        "products": products,
+        "environments": environments,
+        "accounts": [
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "account_id": item["account_id"],
+                "region": item["default_region"],
+                "role_name": item["role_name"] or "",
+            }
+            for item in tree["accounts"]
+        ],
+    }
+
+
+def _create_account_from_json(body):
+    account_id = _valid_account_id(body.get("account_id"))
+    name = (body.get("name") or "").strip()
+    role = _valid_role(body.get("role_name"))
+    region = body.get("region") or "ap-south-1"
+    if not account_id or not name or role is None or region not in REGION_CODES:
+        return "Enter a 12-digit account ID, a name, and a valid role name if you set one."
+    mode = db.get_setting("operating_mode")
+    if mode == "msp":
+        customer_id = _maybe_int(body.get("customer_id"))
+        if not customer_id:
+            customer_name = (body.get("customer_name") or "").strip()
+            if not customer_name:
+                return "Choose a customer, or enter a new customer name."
+            customer_id = db.create_customer(customer_name)
+        elif not any(item["id"] == customer_id for item in db.list_customers()):
+            return "Choose a customer for this account."
+        db.create_account(account_id, name, role, region, customer_id, None, None)
+        return None
+    environment_id = _maybe_int(body.get("environment_id"))
+    environment = next((item for item in db.list_environments() if item["id"] == environment_id), None)
+    if environment:
+        product_id = environment["product_id"]
+        environment_id = environment["id"]
+    else:
+        product_name = (body.get("product_name") or "").strip()
+        environment_name = (body.get("environment_name") or "").strip()
+        if not product_name or not environment_name:
+            return "Choose an environment, or enter a product and environment name."
+        products = db.list_products()
+        if db.get_setting("product_cardinality") == "single" and products:
+            product_id = products[0]["id"]
+        else:
+            product_id = db.create_product(product_name)
+        environment_id = db.create_environment(product_id, environment_name)
+    db.create_account(account_id, name, role, region, None, product_id, environment_id)
+    return None
+
+
 def _create_account_from_form():
     account_id = _valid_account_id(request.form.get("account_id"))
     name = (request.form.get("name") or "").strip()
@@ -1067,6 +1628,133 @@ def _create_account_from_form():
         environment_id,
     )
     return None
+
+
+def _mobile_document(document):
+    def series(items):
+        points = []
+        for item in items or []:
+            try:
+                value = float(item.get("value") or 0)
+            except (TypeError, ValueError):
+                value = 0
+            points.append({"label": item.get("label") or "", "value": value})
+        return points
+
+    sections = []
+    for section in document.get("sections") or []:
+        sections.append({
+            "title": section.get("title") or "",
+            "chart_title": section.get("chart_title") or "",
+            "money": bool(section.get("money")),
+            "chart": series(section.get("chart")),
+            "columns": [str(column) for column in (section.get("columns") or [])],
+            "rows": [
+                [str(cell) for cell in row]
+                for row in (section.get("rows") or [])
+            ],
+        })
+    return {
+        "code": document.get("code") or "",
+        "domain": document.get("domain") or "",
+        "title": document.get("title") or "Report",
+        "audience": document.get("audience") or "",
+        "summary": document.get("summary") or "",
+        "subtitle": document.get("subtitle") or "",
+        "money": bool(document.get("money")),
+        "kpis": [
+            {"label": item.get("label") or "", "value": str(item.get("value") or "")}
+            for item in (document.get("kpis") or [])
+        ],
+        "chart_title": document.get("chart_title") or "",
+        "chart": series(document.get("chart")),
+        "notes": [str(item) for item in (document.get("notes") or []) if str(item).strip()],
+        "sections": sections,
+    }
+
+
+def _scan_brief(row):
+    return {
+        "when": row.get("when"),
+        "kind": row.get("kind"),
+        "account_name": row.get("account_name"),
+        "region": row.get("region"),
+        "total": row.get("total") or 0,
+        "high": row.get("high") or 0,
+        "actor": row.get("actor") or "",
+    }
+
+
+def _load_scans(limit):
+    rows = []
+    for row in db.recent_scans(limit):
+        try:
+            summary = json.loads(row["summary_json"] or "{}")
+        except json.JSONDecodeError:
+            summary = {}
+        rows.append({**row, "summary": summary})
+    return charts.present_scans(rows)
+
+
+def _render_auth(mode, **extra):
+    return render_template(
+        "auth.html",
+        mode=mode,
+        step=1 if mode == "password" else 2,
+        **extra,
+    )
+
+
+def _collect_report(spec, account, region, aws):
+    source = spec["source"]
+    ctx = {
+        "findings": [],
+        "recommendations": [],
+        "notes": [],
+        "trusted": None,
+        "pillars": {},
+        "meta": {},
+    }
+    actor = session.get("username")
+    if source == "advisor":
+        ctx["trusted"] = advisor.trusted_advisor(aws)
+        return ctx
+    if source == "native":
+        result = advisor.native_recommendations(aws, region)
+        ctx["recommendations"] = result.get("recommendations") or []
+        ctx["notes"] = result.get("notes") or []
+        record_scan("cost", account, region, actor, ctx["recommendations"])
+        return ctx
+    if source == "inventory":
+        scan = scan_all_resources(aws, region)
+        recommendations = advisor.rules_from_scan(scan, account["account_id"], region)
+        ctx["recommendations"] = recommendations
+        ctx["notes"] = [
+            "Inventory estimates use published on-demand prices and CloudWatch. "
+            "Cost Optimization Hub is the figure that includes this account's discounts."
+        ]
+        ctx["notes"].extend(scan.get("errors") or [])
+        ctx["meta"] = {
+            "total_cost": scan.get("total_cost"),
+            "actual_30d_ce_cost": scan.get("actual_30d_ce_cost"),
+            "total_saving": scan.get("total_saving"),
+        }
+        record_scan("cost-inventory", account, region, actor, recommendations)
+        return ctx
+    findings = [
+        decorate_finding(item, account["account_id"], region)
+        for item in run_all_checks(aws, region)
+    ]
+    pillars = {name: 0 for name in report_catalog.PILLARS}
+    for finding in findings:
+        pillars[finding["pillar"]] = pillars.get(finding["pillar"], 0) + 1
+    ctx["findings"] = findings
+    ctx["pillars"] = pillars
+    kind = "governance" if spec["domain"] == "governance" else "housekeeping"
+    record_scan(kind, account, region, actor, findings)
+    if spec["id"] == "gov-scorecard":
+        ctx["trusted"] = advisor.trusted_advisor(aws)
+    return ctx
 
 
 def _open_account():

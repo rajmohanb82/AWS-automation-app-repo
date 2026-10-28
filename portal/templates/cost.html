@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Cost · {{ org_name }}{% endblock %}
+{% block title %}Cost · CloudSync{% endblock %}
 {% block page %}cost{% endblock %}
 {% block content %}
 <header class="page-head">
@@ -11,6 +11,7 @@
     <button type="button" id="native-btn">Load AWS recommendations</button>
     <button type="button" class="secondary" id="inventory-btn">Run inventory estimate</button>
     <button type="button" class="secondary" id="pdf-btn">Download PDF</button>
+    <a class="btn secondary" href="{{ url_for('reports_page') }}">Report library</a>
   </div>
 </header>
 <div id="work-status" class="note" hidden></div>

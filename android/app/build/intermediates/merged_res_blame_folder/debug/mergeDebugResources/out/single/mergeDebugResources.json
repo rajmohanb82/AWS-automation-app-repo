@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "/tmp/cursor-sandbox-cache/56fd7e695ec43cbbdbe6de6671cb1c1e/gradle/daemon/8.7/com.vayutechnologies.cloudsync.app-debug-4:/xml_network_security_config.xml.flat",
+        "source": "/tmp/cursor-sandbox-cache/56fd7e695ec43cbbdbe6de6671cb1c1e/gradle/daemon/8.7/com.vayutechnologies.cloudsync.app-main-6:/xml/network_security_config.xml"
+    },
+    {
+        "merged": "com.vayutechnologies.cloudsync.app-debug-4:/xml_file_paths.xml.flat",
+        "source": "com.vayutechnologies.cloudsync.app-main-6:/xml/file_paths.xml"
+    },
+    {
+        "merged": "/tmp/cursor-sandbox-cache/56fd7e695ec43cbbdbe6de6671cb1c1e/gradle/daemon/8.7/com.vayutechnologies.cloudsync.app-debug-4:/drawable_cloudsync_logo.png.flat",
+        "source": "/tmp/cursor-sandbox-cache/56fd7e695ec43cbbdbe6de6671cb1c1e/gradle/daemon/8.7/com.vayutechnologies.cloudsync.app-main-6:/drawable/cloudsync_logo.png"
+    },
+    {
+        "merged": "/tmp/cursor-sandbox-cache/56fd7e695ec43cbbdbe6de6671cb1c1e/gradle/daemon/8.7/com.vayutechnologies.cloudsync.app-debug-4:/drawable_vayu_logo.png.flat",
+        "source": "/tmp/cursor-sandbox-cache/56fd7e695ec43cbbdbe6de6671cb1c1e/gradle/daemon/8.7/com.vayutechnologies.cloudsync.app-main-6:/drawable/vayu_logo.png"
+    }
+]

@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.vayutechnologies.cloudsync.app-mergeDebugResources-2:/values-v30/values-v30.xml",
+            "map": [
+                {
+                    "source": "/tmp/cursor-sandbox-cache/56fd7e695ec43cbbdbe6de6671cb1c1e/gradle/caches/transforms-4/138cba6469364ebf072b25880c7b1bbc/transformed/material3-release/res/values-v30/values-v30.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "72",
+                        "endOffsets": "123"
+                    }
+                }
+            ]
+        }
+    ]
+}
