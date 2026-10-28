@@ -1,0 +1,24 @@
+# Render Blueprint. This is not Docker Compose.
+# In the Render dashboard: New > Blueprint, then set the blueprint file to render/render.yaml.
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: cloudsync
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerfilePath: ./render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORTAL_DB
+        value: /var/data/portal.db
+      - key: PYTHONUNBUFFERED
+        value: "1"
+    disk:
+      name: portal-data
+      mountPath: /var/data
+      sizeGB: 1

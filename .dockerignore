@@ -1,0 +1,13 @@
+# Applies when the Docker build context is the repository root (render/Dockerfile).
+# The Compose build uses portal/ as its context and portal/.dockerignore instead.
+
+.git
+android
+portal/data
+portal/.venv
+**/__pycache__
+**/*.pyc
+**/.venv
+**/*.db
+**/*.db-wal
+**/*.db-shm
