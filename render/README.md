@@ -8,7 +8,9 @@ Render runs one Docker web service. It does not read `docker-compose.yml`.
 
 The image is built from `portal/` with `render/Dockerfile`. Gunicorn listens on the port Render assigns (`PORT`) and on all interfaces. The SQLite database is stored at `/var/data/portal.db` on a persistent disk, so accounts, sign-in, and scan history survive a redeploy.
 
-The local database in `portal/data` is not copied into the image. The first visit to the Render URL runs setup again.
+The local database in `portal/data` is not copied into the image. Render also erases the container filesystem on every rebuild. Accounts and scan history stay only when a persistent disk is mounted at `/var/data` and `PORTAL_DB` is `/var/data/portal.db`.
+
+If the live service asks for setup again after each deploy, follow [PERSISTENT-DATABASE.md](PERSISTENT-DATABASE.md). Add the disk to the service that is already running. Do not create a second service.
 
 ## Deploy with the blueprint
 
